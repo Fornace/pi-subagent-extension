@@ -1,0 +1,12 @@
+{
+  "name": "pi-subagent-extension",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "node test-load.js",
+    "build": "node test-load.js"
+  },
+  "dependencies": {
+    "pi-frontier": "^1.2.0"
+  }
+}
