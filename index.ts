@@ -444,8 +444,8 @@ const AgentScopeSchema = StringEnum(["user", "project", "both"] as const, {
 });
 
 const SubagentParams = Type.Object({
-	agent: Type.Optional(Type.String({ description: "Name of the agent to invoke (for single mode). Omit if using 'model' directly." })),
-	model: Type.Optional(Type.String({ description: "Model ID to use directly (e.g. 'anthropic/claude-sonnet-4-5', 'openai/gpt-4o', 'google/gemini-2.5-pro'). Use instead of or to override 'agent'." })),
+	agent: Type.Optional(Type.String({ description: "Name of the agent to invoke (for single mode). Always prefer named agents." })),
+	model: Type.Optional(Type.String({ description: "Model ID to use directly. ONLY use when no named agent fits the task. Prefer named agents (scout, planner, builder, critic, operator)." })),
 	thinkingLevel: Type.Optional(StringEnum(["off", "minimal", "low", "medium", "high", "xhigh"] as const, { description: "Thinking level override for the subagent." })),
 	task: Type.Optional(Type.String({ description: "Task to delegate (for single mode)" })),
 	tasks: Type.Optional(Type.Array(TaskItem, { description: "Array of {agent, task} for parallel execution" })),
@@ -1079,13 +1079,15 @@ export default function (pi: ExtensionAPI) {
 		].join(" "),
 		promptSnippet: "Spawn a background child agent with steer/interrupt/wait control",
 		promptGuidelines: [
+			"Always prefer named agents (scout, planner, builder, critic, operator) over raw model IDs.",
+			"Only use the 'model' parameter when no named agent fits the task.",
 			"Use agent_spawn for tasks that may need mid-flight steering or coordination with other agents.",
 			"Use 'subagent' for simple fire-and-forget delegation.",
 			"Set workspace: true when agents need to share files or state.",
 		],
 		parameters: Type.Object({
 			agent: Type.Optional(Type.String({ description: "Named agent from ~/.pi/agent/agents/. Omit if using model directly." })),
-			model: Type.Optional(Type.String({ description: "Model ID (e.g. 'anthropic/claude-sonnet-4-5', 'openai/gpt-4o'). Used for ad-hoc agents or to override named agent model." })),
+			model: Type.Optional(Type.String({ description: "Model ID (e.g. 'anthropic/claude-sonnet-4-5', 'openai/gpt-4o'). ONLY use when no named agent fits the task. Prefer named agents." })),
 			task: Type.String({ description: "Task to delegate to the child agent." }),
 			systemPrompt: Type.Optional(Type.String({ description: "Additional system prompt (merged with agent's system prompt if both provided)." })),
 			workspace: Type.Optional(Type.Boolean({ description: "Create a shared workspace directory for cross-agent file communication. Default: false." })),
