@@ -5,7 +5,7 @@ import path from 'node:path';
 const AGENTS_DIR = fs.existsSync(path.join(process.cwd(), 'agents'))
   ? path.join(process.cwd(), 'agents')
   : path.join(process.env.HOME || '', '.pi', 'agent', 'agents');
-const activeAgents = ['scout', 'planner', 'builder', 'critic', 'operator'];
+const activeAgents = ['scout', 'planner', 'builder', 'critic', 'operator', 'researcher'];
 
 const mockModels = [
   { provider: 'alibaba-cloud', id: 'qwen-flash', name: 'Qwen Flash', cost: { input: 0, output: 0 } },

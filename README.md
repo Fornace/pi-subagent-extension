@@ -13,8 +13,9 @@ Only these user agents are active in `~/.pi/agent/agents/`:
 | `builder` | Implementation, unrestricted/default tools | `qwen-max` → `alibaba-cloud/qwen-max` |
 | `critic` | Adversarial review/test analysis | `deepseek-v4-pro` → `alibaba-cloud/deepseek-v4-pro` |
 | `operator` | Server/deploy/debug ops | `qwen-max` → `alibaba-cloud/qwen-max` |
+| `researcher` | Deep research — web, papers, shell-driven deep-research | `gemini-3.1-pro` → `google/gemini-3.1-pro-preview` |
 
-`worker`, `reviewer`, `researcher`, and `writer` were intentionally disabled on 2026-06-12 to avoid agent sprawl and stale Claude defaults.
+`worker`, `reviewer`, and `writer` remain intentionally disabled (pruned 2026-06-12 to avoid agent sprawl and stale Claude defaults). `researcher` was **reinstated 2026-06-20**: it is the only roster agent with web (`ctx_url_read`) and shell (`ctx_shell`, driving `parallel-cli` deep-research) access. Without it, research tasks were misrouted to `scout` (read-only), which thrashed. The old researcher was stale (raw built-in tools, weak default model); the new one uses compressed `ctx_*` tools, `gemini-3.1-pro`, and the Parallel deep-research workflow.
 
 Model names are resolved against Pi's registered/available provider registry first. Aliases like `qwen-max` are preferred over hardcoded dated model IDs. If an agent model cannot be resolved, the child inherits the dispatching agent's current model instead of silently falling back to Claude or another stale default.
 
@@ -39,7 +40,8 @@ subagent/
 │   ├── planner.md       # Creates implementation plans
 │   ├── builder.md       # Implementation
 │   ├── critic.md        # Adversarial review
-│   └── operator.md      # Server operations
+│   ├── operator.md      # Server operations
+│   └── researcher.md    # Deep research (web + shell + deep-research)
 └── prompts/             # Workflow presets (prompt templates)
     ├── implement.md     # scout -> planner -> builder
     ├── scout-and-plan.md    # scout -> planner (no implementation)
@@ -169,6 +171,7 @@ Project agents override user agents with the same name when `agentScope: "both"`
 | `builder` | Implementation | qwen-max | unrestricted/default tools |
 | `critic` | Adversarial review | deepseek-v4-pro | lean-ctx review/impact/test tools |
 | `operator` | Server operations | qwen-max | shell/server tools |
+| `researcher` | Deep research (web/papers/deep-research) | gemini-3.1-pro | ctx_url_read + ctx_shell + read/write |
 
 ## Workflow Prompts
 
