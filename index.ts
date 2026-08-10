@@ -66,6 +66,37 @@ function formatUsageStats(
 	return parts.join(" ");
 }
 
+function hasReportedUsage(usage: UsageStats): boolean {
+	return usage.input > 0 || usage.output > 0 || usage.cacheRead > 0 || usage.cacheWrite > 0;
+}
+
+function formatManagedUsage(usage: UsageStats, compact = false): string {
+	const turns = compact ? `${usage.turns}t` : `${usage.turns} turn${usage.turns === 1 ? "" : "s"}`;
+	if (usage.turns > 0 && !hasReportedUsage(usage)) return `${turns}, usage unavailable`;
+
+	const parts = [turns];
+	if (usage.input) parts.push(`↑${formatTokens(usage.input)}`);
+	if (usage.output) parts.push(`↓${formatTokens(usage.output)}`);
+	if (usage.cacheRead) parts.push(`cached ${formatTokens(usage.cacheRead)}`);
+	if (usage.cacheWrite) parts.push(`cache write ${formatTokens(usage.cacheWrite)}`);
+	parts.push(usage.cost > 0 ? `$${usage.cost.toFixed(4)}` : "cost unavailable");
+	return parts.join(compact ? " " : ", ");
+}
+
+function formatManagedCost(usage: UsageStats): string {
+	if (usage.turns > 0 && !hasReportedUsage(usage)) return "Unavailable (provider did not report usage)";
+	if (usage.cost === 0 && hasReportedUsage(usage)) return "Unavailable (pricing is not configured or provider did not report cost)";
+	return `$${usage.cost.toFixed(4)}`;
+}
+
+function formatManagedTokens(usage: UsageStats): string {
+	if (usage.turns > 0 && !hasReportedUsage(usage)) return "Unavailable (provider did not report usage)";
+	const cache = usage.cacheRead || usage.cacheWrite
+		? `, ${usage.cacheRead} cache read, ${usage.cacheWrite} cache write`
+		: "";
+	return `${usage.input} input, ${usage.output} output${cache}`;
+}
+
 function formatToolCall(
 	toolName: string,
 	args: Record<string, unknown>,
@@ -1309,7 +1340,7 @@ export default function (pi: ExtensionAPI) {
 				const status = agentManager.getStatus(params.handle);
 				if (status && onUpdate) {
 					onUpdate({
-						content: [{ type: "text", text: `Waiting for ${params.handle}: ${status.status} (${status.usage.turns} turns, $${status.usage.cost.toFixed(4)})` }],
+						content: [{ type: "text", text: `Waiting for ${params.handle}: ${status.status} (${formatManagedUsage(status.usage)})` }],
 						details: { handle: params.handle, status },
 					});
 				}
@@ -1329,7 +1360,7 @@ export default function (pi: ExtensionAPI) {
 
 				const output = result.finalOutput || "(no output)";
 				const elapsed = (result.elapsedMs / 1000).toFixed(1);
-				const usageStr = `${result.usage.turns} turns, $${result.usage.cost.toFixed(4)}`;
+				const usageStr = formatManagedUsage(result.usage);
 				const statusIcon = result.status === "completed" ? "✓" : result.status === "aborted" ? "⊘" : "✗";
 
 				return {
@@ -1370,7 +1401,7 @@ export default function (pi: ExtensionAPI) {
 				: status.status === "aborted" ? theme.fg("warning", "⊘")
 				: theme.fg("error", "✗");
 			const elapsed = (status.elapsedMs / 1000).toFixed(1);
-			const usageStr = `${status.usage.turns}t $${status.usage.cost.toFixed(4)}`;
+			const usageStr = formatManagedUsage(status.usage, true);
 
 			if (expanded) {
 				const container = new Container();
@@ -1425,8 +1456,8 @@ export default function (pi: ExtensionAPI) {
 				`Status: ${status.status}`,
 				`Elapsed: ${elapsed}s`,
 				`Turns: ${status.usage.turns}`,
-				`Cost: $${status.usage.cost.toFixed(4)}`,
-				`Tokens: ${status.usage.input}↑ ${status.usage.output}↓`,
+				`Cost: ${formatManagedCost(status.usage)}`,
+				`Tokens: ${formatManagedTokens(status.usage)}`,
 			];
 			if (status.workspaceId) lines.push(`Workspace: ${status.workspaceId}`);
 			if (status.finalOutput) lines.push(`\nOutput:\n${status.finalOutput.slice(0, 500)}`);
@@ -1467,7 +1498,7 @@ export default function (pi: ExtensionAPI) {
 			const lines = agents.map((a) => {
 				const elapsed = (a.elapsedMs / 1000).toFixed(1);
 				const icon = a.status === "running" ? "●" : a.status === "completed" ? "✓" : a.status === "aborted" ? "⊘" : a.status === "failed" ? "✗" : "○";
-				return `${icon} ${a.handle} (${a.model || "default"}) — ${a.status} ${elapsed}s ${a.usage.turns}t $${a.usage.cost.toFixed(4)}`;
+				return `${icon} ${a.handle} (${a.model || "default"}) — ${a.status} ${elapsed}s ${formatManagedUsage(a.usage, true)}`;
 			});
 			return {
 				content: [{ type: "text", text: `Spawned agents (${agents.length}):\n${lines.join("\n")}` }],
