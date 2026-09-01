@@ -50,25 +50,22 @@ subagent/
 
 ## Installation
 
-From the repository root, symlink the files:
+### Pi package
 
 ```bash
-# Symlink the extension (must be in a subdirectory with index.ts)
-mkdir -p ~/.pi/agent/extensions/subagent
-ln -sf "$(pwd)/packages/coding-agent/examples/extensions/subagent/index.ts" ~/.pi/agent/extensions/subagent/index.ts
-ln -sf "$(pwd)/packages/coding-agent/examples/extensions/subagent/agents.ts" ~/.pi/agent/extensions/subagent/agents.ts
+pi install npm:pi-subagent-extension
+# or from git
+pi install git:github.com/Fornace/pi-subagent-extension
+```
 
-# Symlink agents
-mkdir -p ~/.pi/agent/agents
-for f in packages/coding-agent/examples/extensions/subagent/agents/*.md; do
-  ln -sf "$(pwd)/$f" ~/.pi/agent/agents/$(basename "$f")
-done
+### Local (development)
 
-# Symlink workflow prompts
-mkdir -p ~/.pi/agent/prompts
-for f in packages/coding-agent/examples/extensions/subagent/prompts/*.md; do
-  ln -sf "$(pwd)/$f" ~/.pi/agent/prompts/$(basename "$f")
-done
+Sync the repo into the extensions directory:
+
+```bash
+rsync -a --delete --exclude node_modules --exclude .git --exclude graphify-out \
+  ./ ~/.pi/agent/extensions/subagent/
+cd ~/.pi/agent/extensions/subagent && npm install
 ```
 
 ## Security Model

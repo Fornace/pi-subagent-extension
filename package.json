@@ -1,12 +1,57 @@
 {
   "name": "pi-subagent-extension",
   "version": "1.0.0",
+  "description": "Subagent delegation for pi: single, parallel, and chained runs in isolated pi processes, with a user-defined agent roster, model resolution, and slash commands.",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-coding-agent",
+    "subagent",
+    "agents",
+    "delegation",
+    "parallel",
+    "orchestration",
+    "isolated-context"
+  ],
+  "author": "Francesco Frapporti <effedue@gmail.com>",
+  "license": "MIT",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Fornace/pi-subagent-extension.git"
+  },
+  "files": [
+    "index.ts",
+    "agent-manager.ts",
+    "agents.ts",
+    "model-resolver.ts",
+    "settings-page.ts",
+    "workspace.ts",
+    "agents",
+    "prompts",
+    "README.md",
+    "INSTALL.md",
+    "LICENSE"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
   "scripts": {
-    "test": "node test-load.js",
-    "build": "node test-load.js"
+    "test": "node test-load.js"
   },
   "dependencies": {
     "pi-frontier": "^1.2.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-agent-core": "*",
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }
