@@ -142,6 +142,7 @@ export class AgentManager {
   steer(handle: string, message: string): boolean {
     const agent = this.agents.get(handle);
     if (!agent) return false;
+    if (agent.status === "idle") return this.followUp(handle, message);
     if (agent.status !== "running" && agent.status !== "spawning") return false;
 
     sendPrompt(agent, message, "steer");

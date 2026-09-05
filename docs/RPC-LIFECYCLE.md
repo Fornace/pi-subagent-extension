@@ -42,3 +42,11 @@ rpc-mode.js emits prompt acceptance/rejection separately from run completion.
 Source publication is not runtime installation. Reload triggers manager cleanup
 and can interrupt managed children; never reload an active owner to install this
 fix. Collect worker output/checkpoint first and choose an idle session boundary.
+
+Follow-up correction: agent_steer now delivers explicit instructions to idle
+workers through the manager's existing followUp path, preserving the same child.
+Running workers still receive steering. Failed/completed/aborted workers are not
+restarted; refused sends consistently set isError. Registered-tool probe verifies
+exactly one followUp send from idle, steering from running, and no send/isError
+for aborted state. Existing npm test passes. Reading old output still requires
+only agent_status/agent_wait, not another prompt.

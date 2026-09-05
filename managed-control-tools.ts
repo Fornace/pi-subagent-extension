@@ -19,9 +19,9 @@ export function registerManagedControl(pi: ExtensionAPI, agentManager: AgentMana
 	pi.registerTool({
 		name: "agent_steer",
 		label: "Steer Agent",
-		description: "Send a steering message to a running spawned agent. Delivered after the agent's current turn finishes its tool calls, before the next LLM call. Use this to redirect, add context, or change priorities mid-flight.",
-		promptSnippet: "Send a steering message to a running spawned agent",
-		promptGuidelines: ["Use agent_steer to redirect a running agent or inject new instructions mid-flight."],
+		description: "Send an instruction to a spawned agent. Running agents receive steering after current tool calls; idle agents receive a new follow-up prompt on the same process. Completed, failed or aborted processes cannot be resumed by this tool.",
+		promptSnippet: "Steer a running agent or give an idle agent a follow-up",
+		promptGuidelines: ["Use agent_steer for explicit new instructions to a running or idle worker. Read finished output with agent_status or agent_wait; do not resend work merely to collect output."],
 		parameters: Type.Object({
 			handle: Type.String({ description: "Agent handle from agent_spawn." }),
 			message: Type.String({ description: "Steering message to deliver." }),
@@ -37,7 +37,7 @@ export function registerManagedControl(pi: ExtensionAPI, agentManager: AgentMana
 						: `Unknown agent handle: ${params.handle}. Use agent_list to see running agents.`
 					}],
 					details: { handle: params.handle, sent: false },
-					isError: !status,
+					isError: true,
 				};
 			}
 			return {
