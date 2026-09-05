@@ -26,7 +26,13 @@ Model names are resolved against Pi's registered/available provider registry fir
 - **Parallel streaming**: All parallel tasks stream updates simultaneously
 - **Markdown rendering**: Final output rendered with proper formatting (expanded view)
 - **Usage tracking**: Shows turns, tokens, cost, and context usage per agent
-- **Abort support**: Ctrl+C propagates to kill subagent processes
+- **Abort support**: Batch cancellation stops its subprocesses; cancelling
+  `agent_wait` cancels only observation and leaves the managed child running.
+
+Managed RPC waits use Pi's `agent_settled` event, not process exit or the
+intermediate `agent_end` event. The tested runtime baseline is Pi 0.84.4;
+older runtimes are not supported by this lifecycle contract. A settled worker
+remains reusable for follow-ups. Prompt rejection is reported without replay.
 
 ## Structure
 

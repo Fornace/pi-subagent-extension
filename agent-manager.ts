@@ -1,159 +1,19 @@
-/**
- * AgentManager — spawns and manages child pi agents via RPC protocol
- *
- * Each child runs as `pi --mode rpc --no-session` with stdin/stdout JSON lines.
- * Supports: steer, interrupt, wait, status, and shared workspaces.
- */
-
-import { spawn, type ChildProcess } from "node:child_process";
+/** Persistent RPC child management; prompt completion is not process exit. */
+import { spawn } from "node:child_process";
+import { VERSION } from "@earendil-works/pi-coding-agent";
+import { assertManagedRuntime } from "./agent-runtime.ts";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { StringDecoder } from "node:string_decoder";
 import type { Message } from "@earendil-works/pi-ai";
 import { Workspace } from "./workspace.ts";
-
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-export interface AgentSpawnConfig {
-  agentName: string;
-  model?: string;
-  systemPrompt?: string;
-  task: string;
-  cwd: string;
-  workspaceId?: string;
-  workspace?: Workspace;
-  signal?: AbortSignal;
-  tools?: string[];
-  onUpdate?: (event: AgentEvent) => void;
-}
-
-export type AgentState = "spawning" | "running" | "idle" | "completed" | "failed" | "aborted";
-
-export interface UsageStats {
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-  cost: number;
-  turns: number;
-  contextTokens: number;
-}
-
-export interface ManagedAgent {
-  handle: string;
-  agentName: string;
-  model?: string;
-  task: string;
-  status: AgentState;
-  process: ChildProcess;
-  stdin: NodeJS.WritableStream;
-  messages: Message[];
-  usage: UsageStats;
-  startTime: number;
-  endTime?: number;
-  finalOutput?: string;
-  error?: string;
-  workspaceId?: string;
-  workspace?: Workspace;
-  completionPromise: Promise<void>;
-  _resolveCompletion: () => void;
-  _rejectCompletion: (err: Error) => void;
-  _stdoutBuffer: string;
-  _stderrBuffer: string;
-}
-
-export interface AgentEvent {
-  type: string;
-  handle: string;
-  data?: any;
-}
-
-export interface AgentStatusInfo {
-  handle: string;
-  agentName: string;
-  model?: string;
-  status: AgentState;
-  task: string;
-  elapsedMs: number;
-  usage: UsageStats;
-  workspaceId?: string;
-  finalOutput?: string;
-  error?: string;
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-let handleCounter = 0;
-
-function generateHandle(agentName: string): string {
-  return `${agentName}-${++handleCounter}`;
-}
-
-function getPiInvocation(): { command: string; args: string[] } {
-  const currentScript = process.argv[1];
-  const isBunVirtualScript = currentScript?.startsWith("/$bunfs/root/");
-  if (currentScript && !isBunVirtualScript && fs.existsSync(currentScript)) {
-    return { command: process.execPath, args: [currentScript] };
-  }
-  const execName = path.basename(process.execPath).toLowerCase();
-  const isGenericRuntime = /^(node|bun)(\.exe)?$/.test(execName);
-  if (!isGenericRuntime) {
-    return { command: process.execPath, args: [] };
-  }
-  return { command: "pi", args: [] };
-}
-
-function getFinalOutput(messages: Message[]): string {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i];
-    if (msg.role === "assistant") {
-      for (const part of msg.content) {
-        if (part.type === "text") return part.text;
-      }
-    }
-  }
-  return "";
-}
-
-function emptyUsage(): UsageStats {
-  return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0, contextTokens: 0 };
-}
-
-function rpcSend(stdin: NodeJS.WritableStream, cmd: Record<string, unknown>): void {
-  stdin.write(JSON.stringify(cmd) + "\n");
-}
-
-/** Attach a JSONL reader to a stream. Splits on \n only (protocol-compliant). */
-function attachJsonlReader(
-  stream: NodeJS.ReadableStream,
-  onLine: (line: string) => void,
-  onEnd?: () => void,
-): void {
-  const decoder = new StringDecoder("utf8");
-  let buffer = "";
-
-  stream.on("data", (chunk: Buffer | string) => {
-    buffer += typeof chunk === "string" ? chunk : decoder.write(chunk);
-    while (true) {
-      const idx = buffer.indexOf("\n");
-      if (idx === -1) break;
-      let line = buffer.slice(0, idx);
-      buffer = buffer.slice(idx + 1);
-      if (line.endsWith("\r")) line = line.slice(0, -1);
-      if (line) onLine(line);
-    }
-  });
-
-  stream.on("end", () => {
-    buffer += decoder.end();
-    if (buffer) {
-      const line = buffer.endsWith("\r") ? buffer.slice(0, -1) : buffer;
-      if (line) onLine(line);
-    }
-    onEnd?.();
-  });
-}
+import { generateHandle, getPiInvocation, getFinalOutput, emptyUsage, rpcSend,
+  attachJsonlReader, type AgentSpawnConfig, type ManagedAgent, type AgentEvent,
+  type AgentStatusInfo } from "./agent-manager-support.ts";
+export type { AgentSpawnConfig, AgentState, UsageStats, ManagedAgent, AgentEvent,
+  AgentStatusInfo } from "./agent-manager-support.ts";
+import { waitForPrompt } from "./agent-wait.ts";
+import { sendPrompt, observePromptResponse } from "./agent-rpc-prompts.ts";
 
 // ─── AgentManager ────────────────────────────────────────────────────────────
 
@@ -162,6 +22,7 @@ export class AgentManager {
 
   /** Spawn a new child agent. Returns the handle immediately; the agent runs in background. */
   spawn(config: AgentSpawnConfig): string {
+    assertManagedRuntime(VERSION);
     const handle = generateHandle(config.agentName);
 
     // Build CLI args
@@ -272,7 +133,7 @@ export class AgentManager {
     }
 
     // Send the task as the initial prompt
-    rpcSend(agent.stdin, { type: "prompt", message: config.task });
+    sendPrompt(agent, config.task);
 
     return handle;
   }
@@ -283,11 +144,7 @@ export class AgentManager {
     if (!agent) return false;
     if (agent.status !== "running" && agent.status !== "spawning") return false;
 
-    rpcSend(agent.stdin, {
-      type: "prompt",
-      message,
-      streamingBehavior: "steer",
-    });
+    sendPrompt(agent, message, "steer");
     return true;
   }
 
@@ -297,11 +154,23 @@ export class AgentManager {
     if (!agent) return false;
     if (agent.status !== "running" && agent.status !== "idle" && agent.status !== "spawning") return false;
 
-    rpcSend(agent.stdin, {
-      type: "prompt",
-      message,
-      streamingBehavior: "followUp",
-    });
+    // Fence an immediate wait before the asynchronous agent_start event arrives.
+    const previousStatus = agent.status;
+    const previousOutput = agent.finalOutput;
+    const previousError = agent.error;
+    if (previousStatus === "idle") {
+      agent.status = "spawning";
+      agent.finalOutput = undefined;
+      agent.error = undefined;
+    }
+    try {
+      sendPrompt(agent, message, "followUp", previousStatus === "idle");
+    } catch (error) {
+      agent.status = previousStatus;
+      agent.finalOutput = previousOutput;
+      agent.error = previousError;
+      throw error;
+    }
     return true;
   }
 
@@ -332,29 +201,9 @@ export class AgentManager {
     return true;
   }
 
-  /** Wait for an agent to complete. Returns status info. */
-  async wait(handle: string, timeoutMs?: number): Promise<AgentStatusInfo | null> {
-    const agent = this.agents.get(handle);
-    if (!agent) return null;
-
-    // Already done?
-    if (agent.status === "completed" || agent.status === "failed" || agent.status === "aborted") {
-      return this.getStatus(handle);
-    }
-
-    // Wait with optional timeout
-    if (timeoutMs && timeoutMs > 0) {
-      await Promise.race([
-        agent.completionPromise,
-        new Promise<void>((_, reject) =>
-          setTimeout(() => reject(new Error("Wait timed out")), timeoutMs)
-        ),
-      ]);
-    } else {
-      await agent.completionPromise;
-    }
-
-    return this.getStatus(handle);
+  /** Wait for a prompt result, not exit of the reusable RPC process. */
+  async wait(handle: string, timeoutMs?: number, signal?: AbortSignal): Promise<AgentStatusInfo | null> {
+    return waitForPrompt(() => this.getStatus(handle), timeoutMs, signal);
   }
 
   /** Get current status of an agent. */
@@ -462,10 +311,26 @@ export class AgentManager {
             }
           }
         }
-        if (agent.status === "running") {
-          agent.status = "idle"; // idle = finished prompt, waiting for next
+        agent.finalOutput = getFinalOutput(agent.messages);
+        break;
+
+      case "agent_settled":
+        // agent_end can precede retry, compaction and queued continuations.
+        // Only the session-level settled event proves reusable prompt idleness.
+        if (agent.status === "running" || agent.status === "spawning") {
+          agent.status = "idle";
         }
         agent.finalOutput = getFinalOutput(agent.messages);
+        {
+          const last = agent.messages.findLast(message => message.role === "assistant");
+          if (last?.role === "assistant" && (last.stopReason === "error" || last.stopReason === "aborted")) {
+            agent.error = last.errorMessage || `Agent prompt ${last.stopReason}`;
+          }
+        }
+        break;
+
+      case "response":
+        observePromptResponse(agent, event);
         break;
 
       case "message_end":
