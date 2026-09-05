@@ -1,6 +1,6 @@
 {
   "name": "pi-subagent-extension",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Subagent delegation for pi: single, parallel, and chained runs in isolated pi processes, with a user-defined agent roster, model resolution, and slash commands.",
   "keywords": [
     "pi-package",
