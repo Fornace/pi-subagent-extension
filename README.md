@@ -2,22 +2,32 @@
 
 Delegate tasks to specialized subagents with isolated context windows.
 
-## Current local roster
+## Current Fornace roster
 
-Only these user agents are active in `~/.pi/agent/agents/`:
+The packaged default roster uses Mantice routing aliases by task difficulty:
 
-| Agent | Purpose | Model |
-|-------|---------|-------|
-| `scout` | Fast codebase recon | `qwen-flash` → `alibaba-cloud/qwen-flash` |
-| `planner` | Plans + durable task/workflow state | `gemini-3.1-pro` → `google/gemini-3.1-pro-preview` |
-| `builder` | Implementation, unrestricted/default tools | `qwen-max` → `alibaba-cloud/qwen-max` |
-| `critic` | Adversarial review/test analysis | `deepseek-v4-pro` → `alibaba-cloud/deepseek-v4-pro` |
-| `operator` | Server/deploy/debug ops | `qwen-max` → `alibaba-cloud/qwen-max` |
-| `researcher` | Deep research — web, papers, shell-driven deep-research | `gemini-3.1-pro` → `google/gemini-3.1-pro-preview` |
+| Agent | Purpose | Model | Thinking |
+|-------|---------|-------|----------|
+| `quick` | Mechanical edits, extraction, formatting and simple checks | `mantice/fornace-flash` | low |
+| `scout` | Focused codebase reconnaissance | `mantice/fornace-fast` | low |
+| `planner` | Plans and difficult synthesis | `mantice/fornace-reasoning` | high |
+| `researcher` | Web and source synthesis | `mantice/fornace-reasoning` | high |
+| `builder` | Substantial implementation and integration | `mantice/fornace-max` | high |
+| `critic` | Adversarial review and ordinary debugging | `mantice/fornace-max` | high |
+| `operator` | Server, deployment and operational work | `mantice/fornace-max` | high |
+| `astra-debugger` | Higher mathematics, deep debugging and hard-failure steering | `mantice/fornace-astra` | max |
 
-`worker`, `reviewer`, and `writer` remain intentionally disabled (pruned 2026-06-12 to avoid agent sprawl and stale Claude defaults). `researcher` was **reinstated 2026-06-20**: it is the only roster agent with web (`ctx_url_read`) and shell (`ctx_shell`, driving `parallel-cli` deep-research) access. Without it, research tasks were misrouted to `scout` (read-only), which thrashed. The old researcher was stale (raw built-in tools, weak default model); the new one uses compressed `ctx_*` tools, `gemini-3.1-pro`, and the Parallel deep-research workflow.
+Load the packaged `fornace-model-routing` skill before choosing a delegation
+route. Astra is opt-in for higher mathematics, deep debugging, lateral-thinking
+review and steering when a lower model reports a wall. It is not the generic
+default. A hard implementation can use the named `builder` with an explicit
+`model: mantice/fornace-astra` after passing the prior evidence bundle.
 
-Model names are resolved against Pi's registered/available provider registry first. Aliases like `qwen-max` are preferred over hardcoded dated model IDs. If an agent model cannot be resolved, the child inherits the dispatching agent's current model instead of silently falling back to Claude or another stale default.
+Model aliases are resolved against Pi's registered provider catalog. An absent or
+`default` model inherits the dispatching agent. An explicit unresolvable model
+fails before spawning; it never inherits silently. Spawn/status receipts report
+the requested routing alias. Provider response attribution, when available, is a
+separate runtime identity and routing aliases must not be described as fixed backends.
 
 ## Features
 
@@ -42,12 +52,16 @@ subagent/
 ├── index.ts             # The extension (entry point)
 ├── agents.ts            # Agent discovery logic
 ├── agents/              # Sample agent definitions
-│   ├── scout.md         # Fast recon, returns compressed context
-│   ├── planner.md       # Creates implementation plans
-│   ├── builder.md       # Implementation
-│   ├── critic.md        # Adversarial review
-│   ├── operator.md      # Server operations
-│   └── researcher.md    # Deep research (web + shell + deep-research)
+│   ├── quick.md         # Mechanical work on fornace-flash
+│   ├── scout.md         # Focused recon on fornace-fast
+│   ├── planner.md       # Planning on fornace-reasoning
+│   ├── builder.md       # Implementation on fornace-max
+│   ├── critic.md        # Review on fornace-max
+│   ├── operator.md      # Operations on fornace-max
+│   ├── researcher.md    # Research on fornace-reasoning
+│   └── astra-debugger.md # Higher math and deep-debug steering on fornace-astra
+├── skills/
+│   └── fornace-model-routing/SKILL.md # Routing and escalation contract
 └── prompts/             # Workflow presets (prompt templates)
     ├── implement.md     # scout -> planner -> builder
     ├── scout-and-plan.md    # scout -> planner (no implementation)
@@ -90,7 +104,10 @@ When running interactively, the tool prompts for confirmation before running pro
 
 ### Single agent
 ```
-Use scout to find all authentication code
+Use `quick` for a small mechanical task
+Use `builder` for substantial implementation
+Use `astra-debugger` to steer a reproduced hard failure
+Use `builder` with model `mantice/fornace-astra` for hard debug implementation
 ```
 
 ### Parallel execution
@@ -152,8 +169,9 @@ Agents are markdown files with YAML frontmatter:
 ---
 name: my-agent
 description: What this agent does
-tools: ctx_read, ctx_grep, ctx_find, ctx_ls
-model: qwen-flash
+tools: read, grep, find, ls
+model: mantice/fornace-fast
+thinking: low
 ---
 
 System prompt for the agent goes here.
@@ -169,12 +187,14 @@ Project agents override user agents with the same name when `agentScope: "both"`
 
 | Agent | Purpose | Model | Tools |
 |-------|---------|-------|-------|
-| `scout` | Fast codebase recon | qwen-flash | lean-ctx read/search |
-| `planner` | Implementation plans | gemini-3.1-pro | lean-ctx read/search + write plans + ctx_task/workflow |
-| `builder` | Implementation | qwen-max | unrestricted/default tools |
-| `critic` | Adversarial review | deepseek-v4-pro | lean-ctx review/impact/test tools |
-| `operator` | Server operations | qwen-max | shell/server tools |
-| `researcher` | Deep research (web/papers/deep-research) | gemini-3.1-pro | ctx_url_read + ctx_shell + read/write |
+| `quick` | Mechanical work | fornace-flash | focused local tools |
+| `scout` | Focused codebase recon | fornace-fast | read/search |
+| `planner` | Implementation plans | fornace-reasoning | read/search + planning artifacts |
+| `builder` | Substantial implementation | fornace-max | unrestricted/default tools |
+| `critic` | Adversarial review | fornace-max | read-only review tools |
+| `operator` | Server operations | fornace-max | shell/server tools |
+| `researcher` | Source and web synthesis | fornace-reasoning | web + shell + read/write |
+| `astra-debugger` | Higher math and deep-debug steering | fornace-astra | read-only evidence review |
 
 ## Workflow Prompts
 

@@ -12,6 +12,7 @@ import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.ts";
 import { AgentManager } from "./agent-manager.ts";
 import { Workspace } from "./workspace.ts";
 import { resolveAgentModel } from "./model-resolver.ts";
+import { FORNACE_ROUTING_GUIDELINES } from "./routing-policy.ts";
 import { loadAgentSettings, registerAgentsCommand } from "./settings-page.ts";
 import { MAX_PARALLEL_TASKS, MAX_CONCURRENCY, COLLAPSED_ITEM_COUNT, PER_TASK_OUTPUT_CAP, formatTokens, formatUsageStats, hasReportedUsage, formatManagedUsage, formatManagedCost, formatManagedTokens, formatToolCall, getFinalOutput, isFailedResult, getResultOutput, truncateParallelOutput, getDisplayItems } from "./subagent-common.ts";
 import type { UsageStats, SingleResult, SubagentDetails, DisplayItem } from "./subagent-common.ts";
@@ -27,15 +28,17 @@ export function registerManagedSpawn(pi: ExtensionAPI, agentManager: AgentManage
 		].join(" "),
 		promptSnippet: "Spawn a background child agent with steer/interrupt/wait control",
 		promptGuidelines: [
-			"Always prefer named agents (scout, planner, builder, critic, operator) over raw model IDs.",
-			"Only use the 'model' parameter when no named agent fits the task.",
+			"Always prefer named agents over raw model IDs.",
+			"Only use the 'model' parameter to select a different route for a named agent or when no named role fits.",
 			"Use agent_spawn for tasks that may need mid-flight steering or coordination with other agents.",
 			"Use 'subagent' for simple fire-and-forget delegation.",
 			"Set workspace: true when agents need to share files or state.",
+			...FORNACE_ROUTING_GUIDELINES,
 		],
 		parameters: Type.Object({
 			agent: Type.Optional(Type.String({ description: "Named agent from ~/.pi/agent/agents/. Omit if using model directly." })),
-			model: Type.Optional(Type.String({ description: "Model ID (e.g. 'anthropic/claude-sonnet-4-5', 'openai/gpt-4o'). ONLY use when no named agent fits the task. Prefer named agents." })),
+			model: Type.Optional(Type.String({ description: "Explicit provider/model route. Unknown routes fail; they never inherit the parent." })),
+			thinkingLevel: Type.Optional(StringEnum(["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const, { description: "Thinking level override. Named agent default applies when omitted." })),
 			task: Type.String({ description: "Task to delegate to the child agent." }),
 			systemPrompt: Type.Optional(Type.String({ description: "Additional system prompt (merged with agent's system prompt if both provided)." })),
 			workspace: Type.Optional(Type.Boolean({ description: "Create a shared workspace directory for cross-agent file communication. Default: false." })),
@@ -63,11 +66,19 @@ export function registerManagedSpawn(pi: ExtensionAPI, agentManager: AgentManage
 			}
 
 			// Resolve model through persisted /agents overrides, then Pi's registered provider registry.
-			// If there is no match, inherit the dispatching agent's current model.
+			// If there is no explicit/configured model, inherit the dispatching agent.
 			const agentSettings = loadAgentSettings(ctx);
 			const agentOverride = agentConfig ? agentSettings[agentConfig.name] : undefined;
 			const requestedModel = params.model ?? agentOverride?.model ?? agentConfig?.model;
 			const resolved = resolveAgentModel(requestedModel, ctx.modelRegistry, ctx.model);
+			// Explicit model selections fail closed; only an absent/default model may inherit.
+			if (requestedModel && requestedModel !== "default" && !resolved) {
+				return {
+					content: [{ type: "text", text: `Requested model did not resolve: ${requestedModel}. No agent was spawned.` }],
+					details: { requestedModel },
+					isError: true,
+				};
+			}
 			const resolvedModel = resolved?.modelKey;
 			const provider = resolved?.provider || ctx.model?.provider || "unknown";
 			const inherited = resolved?.frontierKey === "dispatching-agent";
@@ -91,6 +102,7 @@ export function registerManagedSpawn(pi: ExtensionAPI, agentManager: AgentManage
 			const handle = agentManager.spawn({
 				agentName: resolvedName,
 				model: resolvedModel,
+				thinkingLevel: params.thinkingLevel ?? agentConfig?.thinkingLevel,
 				systemPrompt: resolvedSystemPrompt || undefined,
 				task: params.task,
 				cwd: ctx.cwd,

@@ -5,50 +5,89 @@ import path from 'node:path';
 const AGENTS_DIR = fs.existsSync(path.join(process.cwd(), 'agents'))
   ? path.join(process.cwd(), 'agents')
   : path.join(process.env.HOME || '', '.pi', 'agent', 'agents');
-const activeAgents = ['scout', 'planner', 'builder', 'critic', 'operator', 'researcher'];
-
-const mockModels = [
-  { provider: 'alibaba-cloud', id: 'qwen-flash', name: 'Qwen Flash', cost: { input: 0, output: 0 } },
-  { provider: 'alibaba-cloud', id: 'qwen-max', name: 'Qwen Max', cost: { input: 0, output: 0 } },
-  { provider: 'alibaba-cloud', id: 'deepseek-v4-pro', name: 'DeepSeek v4 pro', cost: { input: 0, output: 0 } },
-  { provider: 'google', id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro', cost: { input: 0.000002, output: 0.000012 } },
-  { provider: 'openai-codex', id: 'gpt-5.5', name: 'GPT 5.5', cost: { input: 0.000005, output: 0.00003 } },
-];
-const mockRegistry = {
-  getAvailable: () => mockModels,
-  getAll: () => mockModels,
-  hasConfiguredAuth: () => true,
+const expected = {
+  quick: ['mantice/fornace-flash', 'low'],
+  scout: ['mantice/fornace-fast', 'low'],
+  planner: ['mantice/fornace-reasoning', 'high'],
+  researcher: ['mantice/fornace-reasoning', 'high'],
+  builder: ['mantice/fornace-max', 'high'],
+  critic: ['mantice/fornace-max', 'high'],
+  operator: ['mantice/fornace-max', 'high'],
+  'astra-debugger': ['mantice/fornace-astra', 'max'],
 };
-const dispatchingModel = mockModels.find((m) => m.provider === 'openai-codex');
+const mockModels = [...new Set(Object.values(expected).map(([model]) => model))].map((key) => {
+  const [provider, id] = key.split('/');
+  return { provider, id, name: id, cost: { input: 0, output: 0 } };
+});
+mockModels.push({ provider: 'openai-codex', id: 'dispatch-fixture', cost: { input: 0, output: 0 } });
+const mockRegistry = { getAvailable: () => mockModels, getAll: () => mockModels, hasConfiguredAuth: () => true };
+const dispatchingModel = mockModels.at(-1);
 
-console.log('Testing subagent model associations against Pi-style registered providers...');
-
-let hasClaude = false;
-for (const agent of activeAgents) {
-  const file = path.join(AGENTS_DIR, `${agent}.md`);
-  const content = fs.readFileSync(file, 'utf8');
-  const model = content.match(/^model:\s*(.+)$/m)?.[1]?.trim() || '(dispatch/default)';
-  const tools = content.match(/^tools:\s*(.+)$/m)?.[1]?.trim() || '(unrestricted/default tools)';
-  if (/claude|anthropic/i.test(model)) hasClaude = true;
-  const resolved = model.startsWith('(') ? resolveAgentModel(undefined, mockRegistry, dispatchingModel) : resolveAgentModel(model, mockRegistry, dispatchingModel);
-  console.log(`${agent.padEnd(9)} model=${model} resolved=${resolved?.modelKey || '(none)'} provider=${resolved?.provider || 'default'} tools=${tools}`);
+console.log('Testing Fornace agent routes against Pi-style registered providers...');
+for (const [agent, [expectedModel, expectedThinking]] of Object.entries(expected)) {
+  const content = fs.readFileSync(path.join(AGENTS_DIR, `${agent}.md`), 'utf8');
+  const model = content.match(/^model:\s*(.+)$/m)?.[1]?.trim();
+  const thinking = content.match(/^thinking:\s*(.+)$/m)?.[1]?.trim();
+  const resolved = resolveAgentModel(model, mockRegistry, dispatchingModel);
+  if (resolved?.modelKey !== expectedModel || thinking !== expectedThinking) {
+    console.error(`ERROR: ${agent} expected ${expectedModel}:${expectedThinking}, got ${resolved?.modelKey}:${thinking}`);
+    process.exit(1);
+  }
+  console.log(`${agent.padEnd(16)} ${resolved.modelKey}:${thinking}`);
 }
-
-const fallback = resolveAgentModel('definitely-not-registered', mockRegistry, dispatchingModel);
-if (fallback?.modelKey !== 'openai-codex/gpt-5.5') {
-  console.error(`ERROR: unregistered model did not inherit dispatching model, got ${fallback?.modelKey}`);
+for (const alias of ['fornace-flash', 'fornace-fast', 'fornace-reasoning', 'fornace-max', 'fornace-astra']) {
+  const resolved = resolveAgentModel(alias, { getAvailable: () => [], getAll: () => [] }, dispatchingModel);
+  if (resolved?.modelKey !== `mantice/${alias}`) {
+    console.error(`ERROR: direct alias ${alias} resolved to ${resolved?.modelKey}`);
+    process.exit(1);
+  }
+}
+const inherited = resolveAgentModel(undefined, mockRegistry, dispatchingModel);
+if (inherited?.modelKey !== 'openai-codex/dispatch-fixture' || inherited.frontierKey !== 'dispatching-agent') {
+  console.error('ERROR: absent model did not inherit the dispatching model');
   process.exit(1);
 }
-
-const qwenMax = resolveAgentModel('qwen-max', mockRegistry, dispatchingModel);
-if (qwenMax?.modelKey !== 'alibaba-cloud/qwen-max') {
-  console.error(`ERROR: qwen-max alias did not resolve to alibaba-cloud/qwen-max, got ${qwenMax?.modelKey}`);
+if (resolveAgentModel('definitely-not-registered', mockRegistry, dispatchingModel) !== null) {
+  console.error('ERROR: unknown explicit model inherited instead of failing closed');
   process.exit(1);
 }
-
-if (hasClaude) {
-  console.error('ERROR: active agent is linked to Claude/Anthropic');
-  process.exit(1);
+const skill = fs.readFileSync(path.join(process.cwd(), 'skills/fornace-model-routing/SKILL.md'), 'utf8');
+for (const phrase of ['fornace-flash', 'fornace-fast', 'fornace-reasoning', 'fornace-max', 'fornace-astra', 'exact reproducer']) {
+  if (!skill.includes(phrase)) {
+    console.error(`ERROR: routing skill omits ${phrase}`);
+    process.exit(1);
+  }
 }
-
-console.log('OK: qwen-max alias resolves, fallback inherits dispatching model, no active Claude/Anthropic agents.');
+const registeredTools = new Map();
+const registeredCommands = new Map();
+const listeners = new Map();
+const extension = (await import('./index.ts')).default;
+extension({
+  registerTool(tool) { registeredTools.set(tool.name, tool); },
+  registerCommand(name, command) { registeredCommands.set(name, command); },
+  on(name, handler) { listeners.set(name, handler); },
+});
+for (const name of ['subagent', 'agent_spawn', 'agent_steer', 'agent_interrupt', 'agent_status', 'agent_list', 'agent_wait', 'workspace_read']) {
+  if (!registeredTools.has(name)) throw new Error(`Missing registered tool: ${name}`);
+}
+for (const name of ['subagent', 'agent_spawn']) {
+  const joined = (registeredTools.get(name).promptGuidelines || []).join('\n');
+  for (const phrase of ['fornace-flash', 'fornace-reasoning', 'fornace-max', 'fornace-astra', 'exact objective']) {
+    if (!joined.includes(phrase)) throw new Error(`${name} guidance omits ${phrase}`);
+  }
+}
+const thinkingEnum = registeredTools.get('agent_spawn').parameters.properties.thinkingLevel.anyOf
+  || registeredTools.get('agent_spawn').parameters.properties.thinkingLevel.enum;
+if (!JSON.stringify(thinkingEnum).includes('max')) throw new Error('Managed spawn omits max thinking');
+if (!registeredCommands.has('agents') || !listeners.has('session_shutdown')) throw new Error('Extension lifecycle registration incomplete');
+const unknownResult = await registeredTools.get('agent_spawn').execute(
+  'fixture-call',
+  { model: 'definitely-not-registered', task: 'must not spawn' },
+  undefined,
+  undefined,
+  { cwd: process.cwd(), modelRegistry: mockRegistry, model: dispatchingModel },
+);
+if (!unknownResult.isError || !unknownResult.content[0].text.includes('No agent was spawned')) {
+  throw new Error('Managed explicit unknown model did not fail before spawn');
+}
+console.log('OK: extension tools expose routing guidance, managed max-thinking selection, and pre-spawn failure.');

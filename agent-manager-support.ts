@@ -18,6 +18,7 @@ import { Workspace } from "./workspace.ts";
 export interface AgentSpawnConfig {
   agentName: string;
   model?: string;
+  thinkingLevel?: string;
   systemPrompt?: string;
   task: string;
   cwd: string;
@@ -44,6 +45,8 @@ export interface ManagedAgent {
   handle: string;
   agentName: string;
   model?: string;
+  responseModel?: string;
+  thinkingLevel?: string;
   task: string;
   status: AgentState;
   process: ChildProcess;
@@ -73,6 +76,8 @@ export interface AgentStatusInfo {
   handle: string;
   agentName: string;
   model?: string;
+  responseModel?: string;
+  thinkingLevel?: string;
   status: AgentState;
   task: string;
   elapsedMs: number;

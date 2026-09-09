@@ -21,13 +21,36 @@ export const batchExecute = {
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			const agentScope: AgentScope = params.agentScope ?? "user";
 			const discovery = discoverAgents(ctx.cwd, agentScope);
-			const agents = discovery.agents;
+			const discoveredAgents = discovery.agents;
+			const agentSettings = loadAgentSettings(ctx);
+			const resolutionErrors = new Map<string, string>();
+			const agents = discoveredAgents.map((agent) => {
+				const requested = agentSettings[agent.name]?.model ?? agent.model;
+				const resolved = resolveAgentModel(requested, ctx.modelRegistry, ctx.model);
+				if (requested && requested !== "default" && !resolved) {
+					resolutionErrors.set(agent.name, `Requested model did not resolve: ${requested}`);
+				}
+				return { ...agent, model: resolved?.modelKey };
+			});
 			const confirmProjectAgents = params.confirmProjectAgents ?? true;
 
 			const hasChain = (params.chain?.length ?? 0) > 0;
 			const hasTasks = (params.tasks?.length ?? 0) > 0;
 			const hasSingle = Boolean((params.agent || params.model) && params.task);
 			const modeCount = Number(hasChain) + Number(hasTasks) + Number(hasSingle);
+
+			const runNamedAgent = async (
+				agentName: string, task: string, cwd: string | undefined, step: number | undefined,
+				thinkingLevel: string | undefined, update: OnUpdateCallback | undefined, details: (results: SingleResult[]) => SubagentDetails,
+			) => {
+				const resolutionError = resolutionErrors.get(agentName);
+				if (resolutionError) {
+					return { agent: agentName, agentSource: "unknown" as const, task, exitCode: 1, messages: [],
+						stderr: resolutionError, usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0,
+						cost: 0, contextTokens: 0, turns: 0 }, step };
+				}
+				return runSingleAgent(ctx.cwd, agents, agentName, task, cwd, step, thinkingLevel, signal, update, details);
+			};
 
 			const makeDetails =
 				(mode: "single" | "parallel" | "chain") =>
@@ -99,14 +122,12 @@ export const batchExecute = {
 							}
 						: undefined;
 
-					const result = await runSingleAgent(
-						ctx.cwd,
-						agents,
+					const result = await runNamedAgent(
 						step.agent,
 						taskWithContext,
 						step.cwd,
 						i + 1,
-						signal,
+						undefined,
 						chainUpdate,
 						makeDetails("chain"),
 					);
@@ -171,14 +192,12 @@ export const batchExecute = {
 				};
 
 				const results = await mapWithConcurrencyLimit(params.tasks, MAX_CONCURRENCY, async (t, index) => {
-					const result = await runSingleAgent(
-						ctx.cwd,
-						agents,
+					const result = await runNamedAgent(
 						t.agent,
 						t.task,
 						t.cwd,
 						undefined,
-						signal,
+						undefined,
 						// Per-task update callback
 						(partial) => {
 							if (partial.details?.results[0]) {
@@ -245,8 +264,13 @@ export const batchExecute = {
 				}
 
 				// Apply model override to named agent
-				if (params.model && params.agent && resolvedAgent) {
-					resolvedAgent = { ...resolvedAgent, model: params.model };
+				if (params.model) {
+					const resolvedOverride = resolveAgentModel(params.model, ctx.modelRegistry, ctx.model);
+					if (!resolvedOverride) {
+						return { content: [{ type: "text", text: `Requested model did not resolve: ${params.model}. No agent was spawned.` }],
+							details: makeDetails("single")([]), isError: true };
+					}
+					resolvedAgent = { ...resolvedAgent, model: resolvedOverride.modelKey };
 				}
 
 				const result = await runSingleAgent(
@@ -256,6 +280,7 @@ export const batchExecute = {
 					params.task!,
 					params.cwd,
 					undefined,
+					params.thinkingLevel,
 					signal,
 					onUpdate,
 					makeDetails("single"),
