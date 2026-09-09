@@ -29,6 +29,7 @@ export class AgentManager {
     const invocation = getPiInvocation();
     const args = [...invocation.args, "--mode", "rpc", "--no-session"];
     if (config.model) args.push("--model", config.model);
+    if (config.thinkingLevel) args.push("--thinking", config.thinkingLevel);
     if (config.tools?.length) args.push("--tools", config.tools.join(","));
 
     // Write system prompt + workspace instructions to temp file
@@ -69,6 +70,7 @@ export class AgentManager {
       handle,
       agentName: config.agentName,
       model: config.model,
+      thinkingLevel: config.thinkingLevel,
       task: config.task,
       status: "spawning",
       process: proc,
@@ -216,6 +218,8 @@ export class AgentManager {
       handle: agent.handle,
       agentName: agent.agentName,
       model: agent.model,
+      responseModel: agent.responseModel,
+      thinkingLevel: agent.thinkingLevel,
       status: agent.status,
       task: agent.task,
       elapsedMs: (agent.endTime || Date.now()) - agent.startTime,
@@ -347,6 +351,7 @@ export class AgentManager {
             agent.usage.cost += usage.cost?.total || 0;
             agent.usage.contextTokens = usage.totalTokens || 0;
           }
+          if (event.message.model) agent.responseModel = event.message.model;
           if (!agent.model && event.message.model) {
             agent.model = event.message.model;
           }

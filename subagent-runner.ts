@@ -70,6 +70,7 @@ export async function runSingleAgent(
 	task: string,
 	cwd: string | undefined,
 	step: number | undefined,
+	thinkingLevel: string | undefined,
 	signal: AbortSignal | undefined,
 	onUpdate: OnUpdateCallback | undefined,
 	makeDetails: (results: SingleResult[]) => SubagentDetails,
@@ -92,6 +93,7 @@ export async function runSingleAgent(
 
 	const args: string[] = ["--mode", "json", "-p", "--no-session"];
 	if (agent.model) args.push("--model", agent.model);
+	if (thinkingLevel ?? agent.thinkingLevel) args.push("--thinking", (thinkingLevel ?? agent.thinkingLevel)!);
 	if (agent.tools && agent.tools.length > 0) args.push("--tools", agent.tools.join(","));
 
 	let tmpPromptDir: string | null = null;
@@ -106,6 +108,7 @@ export async function runSingleAgent(
 		stderr: "",
 		usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
 		model: agent.model,
+		thinkingLevel: thinkingLevel ?? agent.thinkingLevel,
 		step,
 	};
 
@@ -162,6 +165,7 @@ export async function runSingleAgent(
 							currentResult.usage.cost += usage.cost?.total || 0;
 							currentResult.usage.contextTokens = usage.totalTokens || 0;
 						}
+						if (msg.model) currentResult.responseModel = msg.model;
 						if (!currentResult.model && msg.model) currentResult.model = msg.model;
 						if (msg.stopReason) currentResult.stopReason = msg.stopReason;
 						if (msg.errorMessage) currentResult.errorMessage = msg.errorMessage;

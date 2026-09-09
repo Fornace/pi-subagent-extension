@@ -120,7 +120,9 @@ export function registerManagedControl(pi: ExtensionAPI, agentManager: AgentMana
 			const elapsed = (status.elapsedMs / 1000).toFixed(1);
 			const lines = [
 				`Agent: ${status.handle}`,
-				`Model: ${status.model || "default"}`,
+				`Model route: ${status.model || "default"}`,
+				`Response model: ${status.responseModel || "not reported yet"}`,
+				`Thinking: ${status.thinkingLevel || "session default"}`,
 				`Status: ${status.status}`,
 				`Elapsed: ${elapsed}s`,
 				`Turns: ${status.usage.turns}`,
@@ -166,7 +168,7 @@ export function registerManagedControl(pi: ExtensionAPI, agentManager: AgentMana
 			const lines = agents.map((a) => {
 				const elapsed = (a.elapsedMs / 1000).toFixed(1);
 				const icon = a.status === "running" ? "●" : a.status === "completed" ? "✓" : a.status === "aborted" ? "⊘" : a.status === "failed" ? "✗" : "○";
-				return `${icon} ${a.handle} (${a.model || "default"}) — ${a.status} ${elapsed}s ${formatManagedUsage(a.usage, true)}`;
+				return `${icon} ${a.handle} (${a.model || "default"}${a.responseModel ? ` -> ${a.responseModel}` : ""}) — ${a.status} ${elapsed}s ${formatManagedUsage(a.usage, true)}`;
 			});
 			return {
 				content: [{ type: "text", text: `Spawned agents (${agents.length}):\n${lines.join("\n")}` }],

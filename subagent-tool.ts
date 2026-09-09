@@ -15,10 +15,11 @@ import { resolveAgentModel } from "./model-resolver.ts";
 import { loadAgentSettings, registerAgentsCommand } from "./settings-page.ts";
 import { MAX_PARALLEL_TASKS, MAX_CONCURRENCY, COLLAPSED_ITEM_COUNT, PER_TASK_OUTPUT_CAP, formatTokens, formatUsageStats, hasReportedUsage, formatManagedUsage, formatManagedCost, formatManagedTokens, formatToolCall, getFinalOutput, isFailedResult, getResultOutput, truncateParallelOutput, getDisplayItems } from "./subagent-common.ts";
 import type { UsageStats, SingleResult, SubagentDetails, DisplayItem } from "./subagent-common.ts";
+import { FORNACE_ROUTING_GUIDELINES } from "./routing-policy.ts";
 import { batchExecute } from "./subagent-execute.ts";
 import { batchRender } from "./subagent-render.ts";
 const TaskItem = Type.Object({
-	agent: Type.String({ description: "Name of the agent to invoke" }),
+	agent: Type.String({ description: "Name of the agent to invoke using its configured route" }),
 	task: Type.String({ description: "Task to delegate to the agent" }),
 	cwd: Type.Optional(Type.String({ description: "Working directory for the agent process" })),
 });
@@ -36,8 +37,8 @@ const AgentScopeSchema = StringEnum(["user", "project", "both"] as const, {
 
 const SubagentParams = Type.Object({
 	agent: Type.Optional(Type.String({ description: "Name of the agent to invoke (for single mode). Always prefer named agents." })),
-	model: Type.Optional(Type.String({ description: "Model ID to use directly. ONLY use when no named agent fits the task. Prefer named agents (scout, planner, builder, critic, operator)." })),
-	thinkingLevel: Type.Optional(StringEnum(["off", "minimal", "low", "medium", "high", "xhigh"] as const, { description: "Thinking level override for the subagent." })),
+	model: Type.Optional(Type.String({ description: "Explicit provider/model route for a single named or ad-hoc agent. Unknown routes fail; they never inherit the parent." })),
+	thinkingLevel: Type.Optional(StringEnum(["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const, { description: "Thinking level override for the subagent." })),
 	task: Type.Optional(Type.String({ description: "Task to delegate (for single mode)" })),
 	tasks: Type.Optional(Type.Array(TaskItem, { description: "Array of {agent, task} for parallel execution" })),
 	chain: Type.Optional(Type.Array(ChainItem, { description: "Array of {agent, task} for sequential execution" })),
@@ -58,6 +59,7 @@ export function registerBatch(pi: ExtensionAPI) {
 			'Default agent scope is "user" (from ~/.pi/agent/agents).',
 			'To enable project-local agents in .pi/agents, set agentScope: "both" (or "project").',
 		].join(" "),
+		promptGuidelines: FORNACE_ROUTING_GUIDELINES,
 		parameters: SubagentParams,
 
 ...batchExecute,
