@@ -69,7 +69,7 @@ export function registerManagedSpawn(pi: ExtensionAPI, agentManager: AgentManage
 			// If there is no explicit/configured model, inherit the dispatching agent.
 			const agentSettings = loadAgentSettings(ctx);
 			const agentOverride = agentConfig ? agentSettings[agentConfig.name] : undefined;
-			const requestedModel = params.model ?? agentOverride?.model ?? agentConfig?.model;
+			const requestedModel = (params.model?.trim() ? params.model.trim() : undefined) ?? agentOverride?.model ?? agentConfig?.model;
 			const resolved = resolveAgentModel(requestedModel, ctx.modelRegistry, ctx.model);
 			// Explicit model selections fail closed; only an absent/default model may inherit.
 			if (requestedModel && requestedModel !== "default" && !resolved) {
