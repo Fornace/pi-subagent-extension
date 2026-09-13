@@ -15,13 +15,12 @@ The packaged default roster uses Mantice routing aliases by task difficulty:
 | `builder` | Substantial implementation and integration | `mantice/fornace-max` | high |
 | `critic` | Adversarial review and ordinary debugging | `mantice/fornace-max` | high |
 | `operator` | Server, deployment and operational work | `mantice/fornace-max` | high |
-| `astra-debugger` | Higher mathematics, deep debugging and hard-failure steering | `mantice/fornace-astra` | max |
+| `astra-debugger` | Explicitly requested Astra work | `mantice/fornace-astra` | max |
 
 Load the packaged `fornace-model-routing` skill before choosing a delegation
-route. Astra is opt-in for higher mathematics, deep debugging, lateral-thinking
-review and steering when a lower model reports a wall. It is not the generic
-default. A hard implementation can use the named `builder` with an explicit
-`model: mantice/fornace-astra` after passing the prior evidence bundle.
+route. The standard routes are Flash, Fast, Reasoning and Max. Astra requires an
+explicit user request, including for hard debugging, mathematics and recovery.
+Vision, image and other media work uses its matching specialized route.
 
 Model aliases are resolved against Pi's registered provider catalog. An absent or
 `default` model inherits the dispatching agent. An explicit unresolvable model
@@ -59,7 +58,7 @@ subagent/
 │   ├── critic.md        # Review on fornace-max
 │   ├── operator.md      # Operations on fornace-max
 │   ├── researcher.md    # Research on fornace-reasoning
-│   └── astra-debugger.md # Higher math and deep-debug steering on fornace-astra
+│   └── astra-debugger.md # Explicitly requested Astra review
 ├── skills/
 │   └── fornace-model-routing/SKILL.md # Routing and escalation contract
 └── prompts/             # Workflow presets (prompt templates)
@@ -106,8 +105,8 @@ When running interactively, the tool prompts for confirmation before running pro
 ```
 Use `quick` for a small mechanical task
 Use `builder` for substantial implementation
-Use `astra-debugger` to steer a reproduced hard failure
-Use `builder` with model `mantice/fornace-astra` for hard debug implementation
+Use `astra-debugger` only when the user explicitly requests Astra
+Use `builder` with model `mantice/fornace-astra` only for an explicit Astra implementation request
 ```
 
 ### Parallel execution
@@ -194,7 +193,7 @@ Project agents override user agents with the same name when `agentScope: "both"`
 | `critic` | Adversarial review | fornace-max | read-only review tools |
 | `operator` | Server operations | fornace-max | shell/server tools |
 | `researcher` | Source and web synthesis | fornace-reasoning | web + shell + read/write |
-| `astra-debugger` | Higher math and deep-debug steering | fornace-astra | read-only evidence review |
+| `astra-debugger` | Explicitly requested Astra work | fornace-astra | read-only evidence review |
 
 ## Workflow Prompts
 
