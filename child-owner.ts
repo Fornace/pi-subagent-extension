@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { execFileSync } from "node:child_process";
 
 /** Explicitly loaded in each owned child, including when automatic extensions are disabled. */
@@ -20,8 +20,19 @@ export default function childOwner(pi: ExtensionAPI) {
   pi.on("session_shutdown", event => {
     if (event.reason === "quit" || event.reason === "reload") clearInterval(timer);
   });
-  pi.events.on("mantice:spend-guard", (data: unknown) => {
-    const value = data as { state?: string; reason?: string };
-    process.stdout.write(JSON.stringify({ type: "subagent_guard", state: value.state, reason: value.reason }) + "\n");
+  let context: ExtensionContext | undefined;
+  let latest: unknown;
+  const reportGuard = (data: unknown) => {
+    latest = data;
+    // RPC reserves stdout. Use its documented fire-and-forget UI channel.
+    const value = data as { version?: number; state?: string; reason?: string };
+    context?.ui.setStatus("subagent-guard", JSON.stringify({ version: value.version, state: value.state, reason: value.reason }));
+  };
+  pi.on("session_start", (_event, ctx) => {
+    context = ctx;
+    const entry = ctx.sessionManager.getBranch().findLast(e => e.type === "custom" && e.customType === "mantice-spend-guard");
+    if (entry?.type === "custom") reportGuard(entry.data);
+    else if (latest) reportGuard(latest);
   });
+  pi.events.on("mantice:spend-guard", reportGuard);
 }

@@ -5,6 +5,12 @@ import { acquire, release, terminateChild, IDLE_REAP_MS, childPaused } from "./c
 export function observeAgentEvent(agent: ManagedAgent, event: any): void {
     // Auto-respond to extension UI requests (cancel all dialogs)
     if (event.type === "extension_ui_request") {
+      if (event.method === "setStatus" && event.statusKey === "subagent-guard") {
+        const guard = JSON.parse(event.statusText);
+        observeAgentEvent(agent, { ...guard, type: "subagent_guard" });
+        return;
+      }
+      if (!["select", "confirm", "input", "editor"].includes(event.method)) return;
       const response: Record<string, unknown> = {
         type: "extension_ui_response",
         id: event.id,

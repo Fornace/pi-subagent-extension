@@ -1,8 +1,8 @@
 import { type ChildProcess } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 // Managed and batch paths share admission. Idle RPC processes do not hold permits.
@@ -24,10 +24,15 @@ export function acquire(key: string): void {
 }
 export function release(key: string): void { active.delete(key); }
 export function activeCount(): number { return active.size; }
-export function childSessionFile(): string {
+export function childSessionFile(cwd: string): string {
   const dir = join(homedir(), ".pi", "agent", "subagent-sessions");
   mkdirSync(dir, { recursive: true, mode: 0o700 });
-  return join(dir, `${randomUUID()}.jsonl`);
+  const session = SessionManager.create(cwd, dir);
+  const file = session.getSessionFile()!;
+  // Pi otherwise defers disk creation until its first assistant message.
+  // Pre-create the official header so pre-transport guard pauses persist too.
+  writeFileSync(file, JSON.stringify(session.getHeader()) + "\n", { mode: 0o600, flag: "wx" });
+  return file;
 }
 export function childArgs(): string[] {
   if (process.platform === "win32") throw new Error("Owned child process groups require POSIX in this release.");

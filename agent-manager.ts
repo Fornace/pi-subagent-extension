@@ -30,7 +30,11 @@ export class AgentManager {
       throw new Error("Guarded child execution requires an explicit mantice/fornace model route.");
     }
     const handle = generateHandle(config.agentName);
-    const sessionFile = config.sessionFile ?? childSessionFile();
+    if (config.sessionFile) {
+      const entries = fs.readFileSync(config.sessionFile, "utf8").trim().split("\n").map(line => JSON.parse(line));
+      if (entries[0]?.type !== "session" || typeof entries[0]?.id !== "string") throw new Error("Invalid child session header");
+    }
+    const sessionFile = config.sessionFile ?? childSessionFile(config.cwd);
 
     // Build CLI args
     const invocation = getPiInvocation();

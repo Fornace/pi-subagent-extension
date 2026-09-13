@@ -6,13 +6,13 @@ Source repair only. Installed ~/.pi/agent/extensions/subagent matched repository
 
 Managed and batch children now use the same RPC manager and admission pool. Four active children per owner process. Spawning, running and draining work retains its permit until settlement or process close; settled idle workers release permits. Excess work fails before process creation. Idle processes reap after 60 seconds without removing their durable JSONL or workspace. This timer manages resident processes, not spend classification.
 
-Each child uses --session with a durable path under ~/.pi/agent/subagent-sessions. Status and spawn output include the path; agent_spawn accepts sessionFile for explicit resume. Batch details also include sessionFile. No automatic replay after reaping, failure or interruption. Parent workspaces survive shutdown. Session files and parent tool-result paths provide recovery after the in-memory handle registry is gone.
+Each child uses --session with a durable path under ~/.pi/agent/subagent-sessions. The official SessionManager header is created before launch, because Pi otherwise defers writing until an assistant response. This also persists pre-transport pauses. Explicit resumes require an existing, parseable session with a session header; missing paths cannot silently create a fresh replay. Status and spawn output include the path; agent_spawn accepts sessionFile for explicit resume. Batch details also include sessionFile. No automatic replay after reaping, failure or interruption. Parent workspaces survive shutdown. Session files and parent tool-result paths provide recovery after the in-memory handle registry is gone.
 
 message_end is the only message accumulation source. Removed agent_end accumulation of repeated decoded objects. Usage was already charged only on message_end, so the old duplicate messages do not prove duplicate billing.
 
 Before sending any prompt, including steering/follow-up while spawning, the child must expose the repaired mantice-guard command through real RPC get_commands. Missing guard fails before paid transport. The guard may be explicitly loaded with PI_SUBAGENT_GUARD_EXTENSION; normal installed discovery remains enabled. Child owner monitoring is always explicitly loaded. This release admits explicit mantice/fornace routes on POSIX only; other routes/platforms fail with an explanation rather than running unguarded.
 
-Child guard pause stops the affected child and persists a parent admission pause. /subagent-guard reset requires an idle owner and ready parent Mantice guard; it does not restart children. Goal automation observes the propagated child pause too. Parent guard compacting/paused blocks new admission.
+Child guard pause is bridged over the documented RPC setStatus channel, including restoration from durable entries on startup. RPC redirects extension stdout, so raw stdout is not a transport for this bridge. Child guard pause stops the affected child and persists a parent admission pause. /subagent-guard reset requires an idle owner and ready parent Mantice guard; it does not restart children. Goal automation observes the propagated child pause too. Parent guard compacting/paused blocks new admission.
 
 ## Ownership and shutdown
 
@@ -28,6 +28,8 @@ Real Pi0.85.1 RPC with isolated settings and intercepted fetch: four active chil
 
 Owner SIGKILL probe: verified child and same-group descendant exited; durable result remained. First probe exposed that RPC EOF could outrun the timer; fixed in the child exit path and reran successfully. Another probe exposed duplicate SIGTERM during cleanup; made termination idempotent and reran the original path successfully.
 
-Existing npm test passed. Scoped manager/guard TypeScript check passed. Whole-repository ad hoc TypeScript checking exposes pre-existing errors in renderer/tool generics and model registry types; no project typecheck script existed. Graphify AST update ran.
+Existing npm test passed. Scoped manager/guard TypeScript check passed. Whole-repository ad hoc TypeScript checking has the same 12 diagnostics on an archived baseline and repaired source (renderer/tool generics and model registry types); no project typecheck script existed. Graphify AST update ran.
+
+Additional real Pi probe: a guard pause before the first assistant response is written to disk; restarting that exact session propagates pause before its initial prompt. Zero transport calls. Reproducer child-pause-manual.mjs and receipt child-pause-evidence.json alongside the other probes.
 
 Exact probes/evidence: /tmp/mantice-incident-20260913/{child-manual.mjs,owner-manual.mjs,owner-supervisor.mjs,repair-fixture.ts,child-manual-evidence.json,owner-manual-evidence.json}.
