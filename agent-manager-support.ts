@@ -49,6 +49,7 @@ export interface ManagedAgent {
   responseModel?: string;
   thinkingLevel?: string;
   task: string;
+  parentGoalId?: string;
   status: AgentState;
   process?: ChildProcess;
   stdin?: NodeJS.WritableStream;

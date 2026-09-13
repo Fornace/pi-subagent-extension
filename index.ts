@@ -21,8 +21,10 @@ import { registerManagedControl } from "./managed-control-tools.ts";
 import { registerManagedWait } from "./managed-wait-tool.ts";
 import { registerManagedWorkspace } from "./managed-workspace-tool.ts";
 import { registerToolOutcomes } from "./tool-outcomes.ts";
+import { registerUsageReceipts } from "./usage-receipts.ts";
 export default function (pi: ExtensionAPI) {
 registerToolOutcomes(pi);
+registerUsageReceipts(pi);
 registerActivity(pi);
 registerOwnerGuard(pi);
 registerAgentsCommand(pi);

@@ -1,5 +1,6 @@
 import { rpcSend, getFinalOutput, type ManagedAgent } from "./agent-manager-support.ts";
 import { observePromptResponse } from "./agent-rpc-prompts.ts";
+import { reportUsage } from "./usage-receipts.ts";
 import { acquire, release, terminateChild, IDLE_REAP_MS, childPaused } from "./child-lifecycle.ts";
 
 export function observeAgentEvent(agent: ManagedAgent, event: any): void {
@@ -105,6 +106,7 @@ export function observeAgentEvent(agent: ManagedAgent, event: any): void {
             agent.usage.contextTokens = usage.totalTokens || 0;
           }
           if (event.message.model) agent.responseModel = event.message.model;
+          reportUsage(agent, event);
           if (!agent.model && event.message.model) {
             agent.model = event.message.model;
           }

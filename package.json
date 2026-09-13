@@ -35,6 +35,7 @@
     "managed-launch.ts",
     "child-admission.ts",
     "tool-outcomes.ts",
+    "usage-receipts.ts",
     "agent-events.ts",
     "activity.ts",
     "child-policy.ts",

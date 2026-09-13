@@ -3,6 +3,7 @@ import { VERSION, SessionManager } from "@earendil-works/pi-coding-agent";
 import { readFileSync } from "node:fs";
 import type { Message } from "@earendil-works/pi-ai";
 import { Workspace } from "./workspace.ts";
+import { activeGoalId } from "./usage-receipts.ts";
 import { assertManagedRuntime } from "./agent-runtime.ts";
 import { generateHandle, getFinalOutput, emptyUsage, rpcSend,
   type AgentSpawnConfig, type ManagedAgent, type AgentEvent, type AgentStatusInfo } from "./agent-manager-support.ts";
@@ -45,7 +46,7 @@ export class AgentManager {
     });
     const agent: ManagedAgent = {
       handle, agentName: config.agentName, model: config.model, thinkingLevel: config.thinkingLevel,
-      task: config.task, queuedPrompt: config.task, status: "queued", messages: [], usage: emptyUsage(),
+      task: config.task, parentGoalId: activeGoalId(), queuedPrompt: config.task, status: "queued", messages: [], usage: emptyUsage(),
       startTime: Date.now(), workspaceId: config.workspaceId, workspace: config.workspace,
       completionPromise, _resolveCompletion: resolveCompletion, _rejectCompletion: rejectCompletion,
       guardVerified: false, sessionFile, startPrompt: () => { throw new Error("Child launch pending"); },
