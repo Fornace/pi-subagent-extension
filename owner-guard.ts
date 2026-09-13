@@ -7,7 +7,8 @@ export function registerOwnerGuard(pi: ExtensionAPI) {
   let ctx: ExtensionContext | undefined;
   let childPause: string | undefined;
   let mechanical: { state: string; reason: string } | undefined;
-  function refresh() { setAdmissionBlock(childPause ?? (mechanical && mechanical.state !== "ready" ? mechanical.reason : undefined)); }
+  // Child failures remain visible without disabling unrelated assignments.
+  function refresh() { setAdmissionBlock(mechanical && mechanical.state !== "ready" ? mechanical.reason : undefined); }
   const restore = (context: ExtensionContext) => {
     ctx = context; childPause = undefined; mechanical = undefined;
     for (const entry of context.sessionManager.getBranch()) {
@@ -31,7 +32,7 @@ export function registerOwnerGuard(pi: ExtensionAPI) {
     ctx?.ui.notify(reason, "warning");
   });
   pi.registerCommand("subagent-guard", {
-    description: "Inspect child admission or explicitly reset after child repair",
+    description: "Inspect child recovery diagnostics or acknowledge a repaired child",
     async handler(args, context) {
       if (args.trim() === "reset") {
         if (!context.isIdle() || (mechanical && mechanical.state !== "ready")) {
