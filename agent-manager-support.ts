@@ -1,7 +1,7 @@
 /**
  * AgentManager — spawns and manages child pi agents via RPC protocol
  *
- * Each child runs as `pi --mode rpc --no-session` with stdin/stdout JSON lines.
+ * Each child runs as `pi --mode rpc --session <durable-file>` with JSON lines.
  * Supports: steer, interrupt, wait, status, and shared workspaces.
  */
 
@@ -27,9 +27,11 @@ export interface AgentSpawnConfig {
   signal?: AbortSignal;
   tools?: string[];
   onUpdate?: (event: AgentEvent) => void;
+  sessionFile?: string;
+  wakeOnYield?: boolean;
 }
 
-export type AgentState = "spawning" | "running" | "idle" | "completed" | "failed" | "aborted";
+export type AgentState = "queued" | "spawning" | "running" | "idle" | "completed" | "yielded" | "failed" | "aborted";
 
 export interface UsageStats {
   input: number;
@@ -48,20 +50,31 @@ export interface ManagedAgent {
   responseModel?: string;
   thinkingLevel?: string;
   task: string;
+  parentGoalId?: string;
+  wakeOnYield: boolean;
   status: AgentState;
-  process: ChildProcess;
-  stdin: NodeJS.WritableStream;
+  process?: ChildProcess;
+  stdin?: NodeJS.WritableStream;
+  queuedPrompt?: string;
+  cancelAdmission?: () => void;
   messages: Message[];
   usage: UsageStats;
   startTime: number;
   endTime?: number;
   finalOutput?: string;
+  yieldReason?: string;
   error?: string;
   workspaceId?: string;
   workspace?: Workspace;
   completionPromise: Promise<void>;
   _resolveCompletion: () => void;
   _rejectCompletion: (err: Error) => void;
+  sessionFile: string;
+  idleTimer?: ReturnType<typeof setTimeout>;
+  preflightTimer?: ReturnType<typeof setTimeout>;
+  guardState?: string;
+  guardVerified: boolean;
+  startPrompt: () => void;
   _stdoutBuffer: string;
   _stderrBuffer: string;
 }
@@ -73,6 +86,11 @@ export interface AgentEvent {
 }
 
 export interface AgentStatusInfo {
+  sessionFile: string;
+  guardState?: string;
+  activeChildren: number;
+  queuedChildren?: number;
+  queueReason?: string;
   handle: string;
   agentName: string;
   model?: string;
@@ -84,6 +102,7 @@ export interface AgentStatusInfo {
   usage: UsageStats;
   workspaceId?: string;
   finalOutput?: string;
+  yieldReason?: string;
   error?: string;
 }
 
@@ -125,7 +144,8 @@ export function emptyUsage(): UsageStats {
   return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0, contextTokens: 0 };
 }
 
-export function rpcSend(stdin: NodeJS.WritableStream, cmd: Record<string, unknown>): void {
+export function rpcSend(stdin: NodeJS.WritableStream | undefined, cmd: Record<string, unknown>): void {
+  if (!stdin || !stdin.writable) throw new Error("Child RPC input is unavailable");
   stdin.write(JSON.stringify(cmd) + "\n");
 }
 

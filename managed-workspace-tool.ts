@@ -28,25 +28,17 @@ export function registerManagedWorkspace(pi: ExtensionAPI, agentManager: AgentMa
 			file: Type.Optional(Type.String({ description: "File name to read from workspace directory." })),
 		}),
 
-		async execute(_toolCallId, params) {
+		async execute(_toolCallId, params): Promise<AgentToolResult<Record<string, unknown>>> {
 			const ws = workspaces.get(params.workspaceId);
 			if (!ws) {
 				const available = Array.from(workspaces.keys()).join(", ") || "none";
-				return {
-					content: [{ type: "text", text: `Unknown workspace: ${params.workspaceId}. Available: ${available}` }],
-					details: {},
-					isError: true,
-				};
+				throw new Error(`Unknown workspace: ${params.workspaceId}. Available: ${available}`);
 			}
 
 			if (params.file) {
 				const content = ws.readFile(params.file);
 				if (content === null) {
-					return {
-						content: [{ type: "text", text: `File not found: ${params.file}. Files: ${ws.listFiles().join(", ") || "none"}` }],
-						details: { workspaceId: params.workspaceId },
-						isError: true,
-					};
+					throw new Error(`File not found: ${params.file}. Files: ${ws.listFiles().join(", ") || "none"}`);
 				}
 				return {
 					content: [{ type: "text", text: content }],

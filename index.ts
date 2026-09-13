@@ -13,18 +13,26 @@ import { AgentManager } from "./agent-manager.ts";
 import { Workspace } from "./workspace.ts";
 import { resolveAgentModel } from "./model-resolver.ts";
 import { loadAgentSettings, registerAgentsCommand } from "./settings-page.ts";
+import { registerOwnerGuard } from "./owner-guard.ts";
+import { registerActivity } from "./activity.ts";
 import { registerBatch } from "./subagent-tool.ts";
 import { registerManagedSpawn } from "./managed-spawn-tool.ts";
 import { registerManagedControl } from "./managed-control-tools.ts";
 import { registerManagedWait } from "./managed-wait-tool.ts";
 import { registerManagedWorkspace } from "./managed-workspace-tool.ts";
+import { registerToolOutcomes } from "./tool-outcomes.ts";
+import { registerUsageReceipts } from "./usage-receipts.ts";
 export default function (pi: ExtensionAPI) {
+registerToolOutcomes(pi);
+registerUsageReceipts(pi);
+registerActivity(pi);
+registerOwnerGuard(pi);
 registerAgentsCommand(pi);
 const agentManager = new AgentManager();
 const workspaces = new Map<string, Workspace>();
 pi.on("session_shutdown", async () => {
 await agentManager.cleanup();
-for (const ws of workspaces.values()) ws.destroy();
+// Workspaces and child session files remain available for explicit resume.
 workspaces.clear();
 });
 registerBatch(pi);

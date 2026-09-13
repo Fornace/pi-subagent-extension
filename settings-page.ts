@@ -137,7 +137,7 @@ async function showSettingsPage(ctx: ExtensionCommandContext): Promise<void> {
   if (action === "Clear override (use default)") {
     delete agentSettings[agent.name];
     saveAgentSettings(ctx, agentSettings);
-    ctx.ui.notify(`Cleared override for ${agent.name}`, "success");
+    ctx.ui.notify(`Cleared override for ${agent.name}`, "info");
     return;
   }
 
@@ -147,7 +147,7 @@ async function showSettingsPage(ctx: ExtensionCommandContext): Promise<void> {
 
     agentSettings[agent.name] = { model: modelKey };
     saveAgentSettings(ctx, agentSettings);
-    ctx.ui.notify(`Set ${agent.name} → ${modelKey}`, "success");
+    ctx.ui.notify(`Set ${agent.name} → ${modelKey}`, "info");
     return;
   }
 
@@ -206,7 +206,7 @@ async function browseFrontierModels(
 
   // Show model list
   const modelChoices = models.map((m) => {
-    const caps = [];
+    const caps: string[] = [];
     if (m.reasoning) caps.push("reasoning");
     if (m.toolCall) caps.push("tools");
     if (m.vision) caps.push("vision");
@@ -240,5 +240,5 @@ async function browseFrontierModels(
 
   agentSettings[agentName] = { model: model.modelKey };
   saveAgentSettings(ctx, agentSettings);
-  ctx.ui.notify(`Set ${agentName} → ${model.modelKey}`, "success");
+  ctx.ui.notify(`Set ${agentName} → ${model.modelKey}`, "info");
 }

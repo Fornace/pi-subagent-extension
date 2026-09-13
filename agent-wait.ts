@@ -1,5 +1,7 @@
 import type { AgentStatusInfo } from "./agent-manager-support.ts";
 
+export class WaitTimeoutError extends Error {}
+
 /** Observe prompt completion without terminating a reusable RPC child. */
 export function waitForPrompt(
   status: () => AgentStatusInfo | null,
@@ -19,11 +21,11 @@ export function waitForPrompt(
     const check = () => {
       if (signal?.aborted) return abort();
       const current = status();
-      if (!current || ["idle", "completed", "failed", "aborted"].includes(current.status)) {
+      if (!current || ["idle", "completed", "yielded", "failed", "aborted"].includes(current.status)) {
         return finish(current);
       }
       if (deadline !== undefined && performance.now() >= deadline) {
-        return finish(null, new Error("Wait timed out"));
+        return finish(null, new WaitTimeoutError("Wait timed out"));
       }
       // Independent waits own their timers; cancelling one never aborts the child.
       poll = setTimeout(check, deadline === undefined ? 50 : Math.min(50, Math.max(1, deadline - performance.now())));

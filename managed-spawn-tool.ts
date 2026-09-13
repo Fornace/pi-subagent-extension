@@ -22,7 +22,8 @@ export function registerManagedSpawn(pi: ExtensionAPI, agentManager: AgentManage
 		label: "Spawn Agent",
 		description: [
 			"Spawn a child agent that runs in the background with bidirectional communication.",
-			"Returns a handle you can use with agent_steer, agent_interrupt, agent_wait, and agent_status.",
+			"Returns a handle immediately. Excess assignments queue and start automatically as capacity becomes available.",
+			"Use agent_steer, agent_interrupt, agent_wait, and agent_status with that handle.",
 			"Unlike 'subagent' (fire-and-forget), spawned agents can be steered, interrupted, and monitored in real-time.",
 			"Use workspace: true to create a shared workspace for cross-agent file communication.",
 		].join(" "),
@@ -36,6 +37,7 @@ export function registerManagedSpawn(pi: ExtensionAPI, agentManager: AgentManage
 			...FORNACE_ROUTING_GUIDELINES,
 		],
 		parameters: Type.Object({
+			sessionFile: Type.Optional(Type.String({ description: "Explicit durable child JSONL to resume. Inspect prior failure before resuming." })),
 			agent: Type.Optional(Type.String({ description: "Named agent from ~/.pi/agent/agents/. Omit if using model directly." })),
 			model: Type.Optional(Type.String({ description: "Explicit provider/model route. Unknown routes fail; they never inherit the parent." })),
 			thinkingLevel: Type.Optional(StringEnum(["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const, { description: "Thinking level override. Named agent default applies when omitted." })),
@@ -57,11 +59,7 @@ export function registerManagedSpawn(pi: ExtensionAPI, agentManager: AgentManage
 				agentConfig = agents.find((a) => a.name === params.agent) ?? null;
 				if (!agentConfig && !params.model) {
 					const available = agents.map((a) => `"${a.name}"`).join(", ") || "none";
-					return {
-						content: [{ type: "text", text: `Unknown agent: "${params.agent}". Available: ${available}. Or use 'model' directly.` }],
-						details: {},
-						isError: true,
-					};
+					throw new Error(`Unknown agent: "${params.agent}". Available: ${available}. Or specify a model directly.`);
 				}
 			}
 
@@ -73,11 +71,7 @@ export function registerManagedSpawn(pi: ExtensionAPI, agentManager: AgentManage
 			const resolved = resolveAgentModel(requestedModel, ctx.modelRegistry, ctx.model);
 			// Explicit model selections fail closed; only an absent/default model may inherit.
 			if (requestedModel && requestedModel !== "default" && !resolved) {
-				return {
-					content: [{ type: "text", text: `Requested model did not resolve: ${requestedModel}. No agent was spawned.` }],
-					details: { requestedModel },
-					isError: true,
-				};
+				throw new Error(`Requested model did not resolve: ${requestedModel}. No agent was spawned.`);
 			}
 			const resolvedModel = resolved?.modelKey;
 			const provider = resolved?.provider || ctx.model?.provider || "unknown";
@@ -100,6 +94,7 @@ export function registerManagedSpawn(pi: ExtensionAPI, agentManager: AgentManage
 
 			// Spawn the agent
 			const handle = agentManager.spawn({
+				sessionFile: params.sessionFile,
 				agentName: resolvedName,
 				model: resolvedModel,
 				thinkingLevel: params.thinkingLevel ?? agentConfig?.thinkingLevel,
@@ -130,7 +125,7 @@ export function registerManagedSpawn(pi: ExtensionAPI, agentManager: AgentManage
 			return {
 				content: [{
 					type: "text",
-					text: `Spawned agent **${handle}** (${modelInfo})\nTask: ${params.task.slice(0, 200)}${params.task.length > 200 ? "..." : ""}${wsInfo}\n\nUse agent_steer to redirect, agent_interrupt to stop, agent_wait to collect results.`,
+					text: `Agent **${handle}** (${modelInfo})\nStatus: ${status.status}\nSession: ${status.sessionFile}\nTask: ${params.task.slice(0, 200)}${params.task.length > 200 ? "..." : ""}${wsInfo}\n\nUse agent_steer to redirect, agent_interrupt to stop, agent_wait to collect results.`,
 				}],
 				details: { handle, status, workspacePath: ws?.path, provider, costInfo },
 			};

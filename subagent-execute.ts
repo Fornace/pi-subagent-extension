@@ -17,14 +17,16 @@ import { MAX_PARALLEL_TASKS, MAX_CONCURRENCY, COLLAPSED_ITEM_COUNT, PER_TASK_OUT
 import type { UsageStats, SingleResult, SubagentDetails, DisplayItem } from "./subagent-common.ts";
 import { runSingleAgent, mapWithConcurrencyLimit } from "./subagent-runner.ts";
 import type { OnUpdateCallback } from "./subagent-runner.ts";
-export const batchExecute = {
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { SubagentParams } from "./subagent-tool.ts";
+export const batchExecute: Pick<ToolDefinition<typeof SubagentParams, SubagentDetails>, "execute"> = {
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			const agentScope: AgentScope = params.agentScope ?? "user";
 			const discovery = discoverAgents(ctx.cwd, agentScope);
 			const discoveredAgents = discovery.agents;
 			const agentSettings = loadAgentSettings(ctx);
 			const resolutionErrors = new Map<string, string>();
-			const agents = discoveredAgents.map((agent) => {
+			const agents: AgentConfig[] = discoveredAgents.map((agent) => {
 				const requested = agentSettings[agent.name]?.model ?? agent.model;
 				const resolved = resolveAgentModel(requested, ctx.modelRegistry, ctx.model);
 				if (requested && requested !== "default" && !resolved) {
@@ -63,15 +65,7 @@ export const batchExecute = {
 
 			if (modeCount !== 1) {
 				const available = agents.map((a) => `${a.name} (${a.source})`).join(", ") || "none";
-				return {
-					content: [
-						{
-							type: "text",
-							text: `Invalid parameters. Provide exactly one mode.\nAvailable agents: ${available}`,
-						},
-					],
-					details: makeDetails("single")([]),
-				};
+				throw new Error(`Invalid parameters. Provide exactly one mode.\nAvailable agents: ${available}`);
 			}
 
 			if ((agentScope === "project" || agentScope === "both") && confirmProjectAgents && ctx.hasUI) {
@@ -139,7 +133,6 @@ export const batchExecute = {
 						return {
 							content: [{ type: "text", text: `Chain stopped at step ${i + 1} (${step.agent}): ${errorMsg}` }],
 							details: makeDetails("chain")(results),
-							isError: true,
 						};
 					}
 					previousOutput = getFinalOutput(result.messages);
@@ -151,16 +144,6 @@ export const batchExecute = {
 			}
 
 			if (params.tasks && params.tasks.length > 0) {
-				if (params.tasks.length > MAX_PARALLEL_TASKS)
-					return {
-						content: [
-							{
-								type: "text",
-								text: `Too many parallel tasks (${params.tasks.length}). Max is ${MAX_PARALLEL_TASKS}.`,
-							},
-						],
-						details: makeDetails("parallel")([]),
-					};
 
 				// Track all results for streaming updates
 				const allResults: SingleResult[] = new Array(params.tasks.length);
@@ -238,10 +221,7 @@ export const batchExecute = {
 					resolvedAgent = agents.find((a) => a.name === params.agent) ?? null;
 					if (!resolvedAgent && !params.model) {
 						const available = agents.map((a) => `"${a.name}"`).join(", ") || "none";
-						return {
-							content: [{ type: "text", text: `Unknown agent: "${params.agent}". Available agents: ${available}. Or use 'model' to specify any model directly.` }],
-							details: makeDetails("single")([]),
-						};
+						throw new Error(`Unknown agent: "${params.agent}". Available agents: ${available}. Or specify a model directly.`);
 					}
 				}
 				if (!resolvedAgent && params.model) {
@@ -257,25 +237,21 @@ export const batchExecute = {
 				}
 				if (!resolvedAgent) {
 					const available = agents.map((a) => `"${a.name}"`).join(", ") || "none";
-					return {
-						content: [{ type: "text", text: `No agent or model specified. Available agents: ${available}. Or use 'model' to specify any model directly.` }],
-						details: makeDetails("single")([]),
-					};
+					throw new Error(`No agent or model specified. Available agents: ${available}.`);
 				}
 
 				// Apply model override to named agent
 				if (params.model) {
 					const resolvedOverride = resolveAgentModel(params.model, ctx.modelRegistry, ctx.model);
 					if (!resolvedOverride) {
-						return { content: [{ type: "text", text: `Requested model did not resolve: ${params.model}. No agent was spawned.` }],
-							details: makeDetails("single")([]), isError: true };
+						throw new Error(`Requested model did not resolve: ${params.model}. No agent was spawned.`);
 					}
 					resolvedAgent = { ...resolvedAgent, model: resolvedOverride.modelKey };
 				}
 
 				const result = await runSingleAgent(
 					ctx.cwd,
-					[...agents, resolvedAgent],
+					[...agents.filter(agent => agent.name !== resolvedAgent!.name), resolvedAgent],
 					resolvedAgent.name,
 					params.task!,
 					params.cwd,
@@ -291,7 +267,6 @@ export const batchExecute = {
 					return {
 						content: [{ type: "text", text: `Agent ${result.stopReason || "failed"}: ${errorMsg}` }],
 						details: makeDetails("single")([result]),
-						isError: true,
 					};
 				}
 				return {
@@ -301,9 +276,6 @@ export const batchExecute = {
 			}
 
 			const available = agents.map((a) => `${a.name} (${a.source})`).join(", ") || "none";
-			return {
-				content: [{ type: "text", text: `Invalid parameters. Available agents: ${available}` }],
-				details: makeDetails("single")([]),
-			};
+			throw new Error(`Invalid parameters. Available agents: ${available}`);
 		},
 };

@@ -31,14 +31,9 @@ export function registerManagedControl(pi: ExtensionAPI, agentManager: AgentMana
 			const sent = agentManager.steer(params.handle, params.message);
 			if (!sent) {
 				const status = agentManager.getStatus(params.handle);
-				return {
-					content: [{ type: "text", text: status
-						? `Cannot steer: agent ${params.handle} is ${status.status}.`
-						: `Unknown agent handle: ${params.handle}. Use agent_list to see running agents.`
-					}],
-					details: { handle: params.handle, sent: false },
-					isError: true,
-				};
+				throw new Error(status
+					? `Cannot steer: agent ${params.handle} is ${status.status}.`
+					: `Unknown agent handle: ${params.handle}. Use agent_list to inspect workers.`);
 			}
 			return {
 				content: [{ type: "text", text: `Steered ${params.handle}: "${params.message}"` }],
@@ -73,16 +68,13 @@ export function registerManagedControl(pi: ExtensionAPI, agentManager: AgentMana
 			const interrupted = agentManager.interrupt(params.handle, params.reason);
 			if (!interrupted) {
 				const status = agentManager.getStatus(params.handle);
+				if (!status) throw new Error(`Unknown agent handle: ${params.handle}`);
 				return {
-					content: [{ type: "text", text: status
-						? `Cannot interrupt: agent ${params.handle} is already ${status.status}.`
-						: `Unknown agent handle: ${params.handle}.`
-					}],
-					details: { handle: params.handle, interrupted: false },
-					isError: !status,
+					content: [{ type: "text", text: `Agent ${params.handle} is already ${status.status}.` }],
+					details: { handle: params.handle, interrupted: false, status },
 				};
 			}
-			const status = agentManager.getStatus(params.handle);
+			const status = agentManager.getStatus(params.handle)!;
 			return {
 				content: [{ type: "text", text: `Interrupted ${params.handle}${params.reason ? `: ${params.reason}` : ""}.\nOutput so far: ${status?.finalOutput?.slice(0, 500) || "(none)"}` }],
 				details: { handle: params.handle, interrupted: true, status },
@@ -111,11 +103,7 @@ export function registerManagedControl(pi: ExtensionAPI, agentManager: AgentMana
 		async execute(_toolCallId, params) {
 			const status = agentManager.getStatus(params.handle);
 			if (!status) {
-				return {
-					content: [{ type: "text", text: `Unknown agent handle: ${params.handle}. Use agent_list to see running agents.` }],
-					details: {},
-					isError: true,
-				};
+				throw new Error(`Unknown agent handle: ${params.handle}. Use agent_list to inspect workers.`);
 			}
 			const elapsed = (status.elapsedMs / 1000).toFixed(1);
 			const lines = [
@@ -131,6 +119,7 @@ export function registerManagedControl(pi: ExtensionAPI, agentManager: AgentMana
 			];
 			if (status.workspaceId) lines.push(`Workspace: ${status.workspaceId}`);
 			if (status.finalOutput) lines.push(`\nOutput:\n${status.finalOutput.slice(0, 500)}`);
+			if (status.yieldReason) lines.push(`\nYield: ${status.yieldReason}\nSaved session: ${status.sessionFile}`);
 			if (status.error) lines.push(`\nError: ${status.error}`);
 
 			return {
@@ -167,7 +156,7 @@ export function registerManagedControl(pi: ExtensionAPI, agentManager: AgentMana
 			}
 			const lines = agents.map((a) => {
 				const elapsed = (a.elapsedMs / 1000).toFixed(1);
-				const icon = a.status === "running" ? "●" : a.status === "completed" ? "✓" : a.status === "aborted" ? "⊘" : a.status === "failed" ? "✗" : "○";
+				const icon = a.status === "running" ? "●" : a.status === "completed" ? "✓" : a.status === "yielded" ? "↥" : a.status === "aborted" ? "⊘" : a.status === "failed" ? "✗" : "○";
 				return `${icon} ${a.handle} (${a.model || "default"}${a.responseModel ? ` -> ${a.responseModel}` : ""}) — ${a.status} ${elapsed}s ${formatManagedUsage(a.usage, true)}`;
 			});
 			return {
@@ -184,6 +173,7 @@ export function registerManagedControl(pi: ExtensionAPI, agentManager: AgentMana
 			for (const a of agents) {
 				const icon = a.status === "running" ? theme.fg("success", "●")
 					: a.status === "completed" ? theme.fg("success", "✓")
+					: a.status === "yielded" ? theme.fg("warning", "↥")
 					: a.status === "aborted" ? theme.fg("warning", "⊘")
 					: a.status === "failed" ? theme.fg("error", "✗")
 					: theme.fg("muted", "○");
