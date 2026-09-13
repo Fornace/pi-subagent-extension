@@ -15,6 +15,7 @@ import { resolveAgentModel } from "./model-resolver.ts";
 import { loadAgentSettings, registerAgentsCommand } from "./settings-page.ts";
 import { MAX_PARALLEL_TASKS, MAX_CONCURRENCY, COLLAPSED_ITEM_COUNT, PER_TASK_OUTPUT_CAP, formatTokens, formatUsageStats, hasReportedUsage, formatManagedUsage, formatManagedCost, formatManagedTokens, formatToolCall, getFinalOutput, isFailedResult, getResultOutput, truncateParallelOutput, getDisplayItems } from "./subagent-common.ts";
 import type { UsageStats, SingleResult, SubagentDetails, DisplayItem } from "./subagent-common.ts";
+import { WaitTimeoutError } from "./agent-wait.ts";
 export function registerManagedWait(pi: ExtensionAPI, agentManager: AgentManager, workspaces: Map<string, Workspace>) {
 	pi.registerTool({
 		name: "agent_wait",
@@ -24,10 +25,10 @@ export function registerManagedWait(pi: ExtensionAPI, agentManager: AgentManager
 		promptGuidelines: ["Use agent_wait to block until a spawned agent completes and get its output."],
 		parameters: Type.Object({
 			handle: Type.String({ description: "Agent handle from agent_spawn." }),
-			timeout: Type.Optional(Type.Number({ description: "Timeout in seconds (0 = wait forever). Default: 120." })),
+			timeout: Type.Optional(Type.Number({ minimum: 0, description: "Timeout in seconds (0 = wait forever). Default: 120." })),
 		}),
 
-		async execute(_toolCallId, params, signal, onUpdate) {
+		async execute(_toolCallId, params, signal, onUpdate): Promise<AgentToolResult<Record<string, unknown>>> {
 			const timeoutMs = (params.timeout ?? 120) * 1000;
 
 			// Progress updates while waiting
@@ -45,13 +46,7 @@ export function registerManagedWait(pi: ExtensionAPI, agentManager: AgentManager
 				const result = await agentManager.wait(params.handle, timeoutMs > 0 ? timeoutMs : undefined, signal);
 				clearInterval(progressInterval);
 
-				if (!result) {
-					return {
-						content: [{ type: "text", text: `Unknown agent handle: ${params.handle}.` }],
-						details: { handle: params.handle },
-						isError: true,
-					};
-				}
+				if (!result) throw new Error(`Unknown agent handle: ${params.handle}.`);
 
 				const output = result.finalOutput || "(no output)";
 				const elapsed = (result.elapsedMs / 1000).toFixed(1);
@@ -65,16 +60,17 @@ export function registerManagedWait(pi: ExtensionAPI, agentManager: AgentManager
 						text: `${statusIcon} Agent ${params.handle} ${result.status} (${elapsed}s, ${usageStr})\n\n${result.error ? `Error: ${result.error}\n` : ""}${output}`,
 					}],
 					details: { handle: params.handle, status: result },
-					isError: !success,
 				};
-			} catch (err: any) {
-				clearInterval(progressInterval);
+			} catch (error) {
+				if (!(error instanceof WaitTimeoutError)) throw error;
 				const status = agentManager.getStatus(params.handle);
+				if (!status) throw new Error(`Unknown agent handle: ${params.handle}.`);
 				return {
-					content: [{ type: "text", text: `Wait failed for ${params.handle}: ${err.message}\nPartial output: ${status?.finalOutput?.slice(0, 500) || "(none)"}` }],
-					details: { handle: params.handle, error: err.message, status },
-					isError: true,
+					content: [{ type: "text", text: `Agent ${params.handle}: ${status.status}. The wait interval ended; the assignment continues.\n${status.finalOutput?.slice(0, 500) ?? ""}` }],
+					details: { handle: params.handle, waiting: true, status },
 				};
+			} finally {
+				clearInterval(progressInterval);
 			}
 		},
 
@@ -94,7 +90,8 @@ export function registerManagedWait(pi: ExtensionAPI, agentManager: AgentManager
 				return new Text(text?.type === "text" ? text.text : "(no output)", 0, 0);
 			}
 
-			const icon = !result.isError && !status.error && (status.status === "completed" || status.status === "idle") ? theme.fg("success", "✓")
+			const icon = ["queued", "spawning", "running"].includes(status.status) ? theme.fg("muted", "○")
+				: !status.error && (status.status === "completed" || status.status === "idle") ? theme.fg("success", "✓")
 				: status.status === "aborted" ? theme.fg("warning", "⊘")
 				: theme.fg("error", "✗");
 			const elapsed = (status.elapsedMs / 1000).toFixed(1);

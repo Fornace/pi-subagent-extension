@@ -59,11 +59,7 @@ export function registerManagedSpawn(pi: ExtensionAPI, agentManager: AgentManage
 				agentConfig = agents.find((a) => a.name === params.agent) ?? null;
 				if (!agentConfig && !params.model) {
 					const available = agents.map((a) => `"${a.name}"`).join(", ") || "none";
-					return {
-						content: [{ type: "text", text: `Unknown agent: "${params.agent}". Available: ${available}. Or use 'model' directly.` }],
-						details: {},
-						isError: true,
-					};
+					throw new Error(`Unknown agent: "${params.agent}". Available: ${available}. Or specify a model directly.`);
 				}
 			}
 
@@ -75,11 +71,7 @@ export function registerManagedSpawn(pi: ExtensionAPI, agentManager: AgentManage
 			const resolved = resolveAgentModel(requestedModel, ctx.modelRegistry, ctx.model);
 			// Explicit model selections fail closed; only an absent/default model may inherit.
 			if (requestedModel && requestedModel !== "default" && !resolved) {
-				return {
-					content: [{ type: "text", text: `Requested model did not resolve: ${requestedModel}. No agent was spawned.` }],
-					details: { requestedModel },
-					isError: true,
-				};
+				throw new Error(`Requested model did not resolve: ${requestedModel}. No agent was spawned.`);
 			}
 			const resolvedModel = resolved?.modelKey;
 			const provider = resolved?.provider || ctx.model?.provider || "unknown";

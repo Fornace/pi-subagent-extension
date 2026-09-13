@@ -35,7 +35,7 @@ const AgentScopeSchema = StringEnum(["user", "project", "both"] as const, {
 	default: "user",
 });
 
-const SubagentParams = Type.Object({
+export const SubagentParams = Type.Object({
 	agent: Type.Optional(Type.String({ description: "Name of the agent to invoke (for single mode). Always prefer named agents." })),
 	model: Type.Optional(Type.String({ description: "Explicit provider/model route for a single named or ad-hoc agent. Unknown routes fail; they never inherit the parent." })),
 	thinkingLevel: Type.Optional(StringEnum(["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const, { description: "Thinking level override for the subagent." })),

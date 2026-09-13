@@ -20,7 +20,9 @@ import { registerManagedSpawn } from "./managed-spawn-tool.ts";
 import { registerManagedControl } from "./managed-control-tools.ts";
 import { registerManagedWait } from "./managed-wait-tool.ts";
 import { registerManagedWorkspace } from "./managed-workspace-tool.ts";
+import { registerToolOutcomes } from "./tool-outcomes.ts";
 export default function (pi: ExtensionAPI) {
+registerToolOutcomes(pi);
 registerActivity(pi);
 registerOwnerGuard(pi);
 registerAgentsCommand(pi);

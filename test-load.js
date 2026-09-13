@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { resolveAgentModel } from './model-resolver.ts';
 import fs from 'node:fs';
@@ -82,14 +83,11 @@ const thinkingEnum = registeredTools.get('agent_spawn').parameters.properties.th
   || registeredTools.get('agent_spawn').parameters.properties.thinkingLevel.enum;
 if (!JSON.stringify(thinkingEnum).includes('max')) throw new Error('Managed spawn omits max thinking');
 if (!registeredCommands.has('agents') || !listeners.has('session_shutdown')) throw new Error('Extension lifecycle registration incomplete');
-const unknownResult = await registeredTools.get('agent_spawn').execute(
+await assert.rejects(() => registeredTools.get('agent_spawn').execute(
   'fixture-call',
   { model: 'definitely-not-registered', task: 'must not spawn' },
   undefined,
   undefined,
   { cwd: process.cwd(), modelRegistry: mockRegistry, model: dispatchingModel },
-);
-if (!unknownResult.isError || !unknownResult.content[0].text.includes('No agent was spawned')) {
-  throw new Error('Managed explicit unknown model did not fail before spawn');
-}
+), /No agent was spawned/);
 console.log('OK: extension tools expose routing guidance, managed max-thinking selection, and pre-spawn failure.');
