@@ -15,7 +15,7 @@ const clean = (text: string, limit: number) => text.replace(/[\x00-\x1f\x7f-\x9f
 /** A display-only channel. It never queues a model prompt or polls a child. */
 export function reportActivity(agent: ManagedAgent, event: any): void {
   const type = String(event.type);
-  if (!["spawn", "agent_start", "agent_settled", "message_update", "message_end", "tool_execution_start",
+  if (!["queued", "spawn", "agent_start", "agent_settled", "message_update", "message_end", "tool_execution_start",
     "tool_execution_end", "process_close", "process_error", "interrupt", "preflight_timeout", "subagent_guard", "extension_ui_request"].includes(type)) return;
   const prior = observed.get(agent.handle);
   let observation: Observation = { type };

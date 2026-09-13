@@ -3,6 +3,8 @@ import { observePromptResponse } from "./agent-rpc-prompts.ts";
 import { acquire, release, terminateChild, IDLE_REAP_MS, childPaused } from "./child-lifecycle.ts";
 
 export function observeAgentEvent(agent: ManagedAgent, event: any): void {
+    const proc = agent.process;
+    if (!proc) throw new Error("RPC event received before child launch");
     // Auto-respond to extension UI requests (cancel all dialogs)
     if (event.type === "extension_ui_request") {
       if (event.method === "setStatus" && event.statusKey === "subagent-guard") {
@@ -39,8 +41,9 @@ export function observeAgentEvent(agent: ManagedAgent, event: any): void {
         if (agent.status === "running" || agent.status === "spawning") {
           agent.status = "idle";
           release(agent.handle);
+          clearTimeout(agent.idleTimer);
           agent.idleTimer = setTimeout(() => {
-            if (agent.status === "idle") terminateChild(agent.process);
+            if (agent.status === "idle") terminateChild(proc);
           }, IDLE_REAP_MS);
           agent.idleTimer.unref();
         }
@@ -59,7 +62,7 @@ export function observeAgentEvent(agent: ManagedAgent, event: any): void {
           agent.error = `Child guard paused: ${event.reason}`;
           childPaused(`${agent.handle}: ${agent.error}`);
           agent.status = "failed";
-          terminateChild(agent.process);
+          terminateChild(proc);
         }
         break;
 
@@ -70,7 +73,7 @@ export function observeAgentEvent(agent: ManagedAgent, event: any): void {
           if (!event.success || !required.every(name => event.data?.commands?.some((c: { name: string }) => c.name === name))) {
             agent.status = "failed";
             agent.error = "Child lacks required guard, lifetime budget, or ownership capability. Inspect child extension errors and install coordinated repairs.";
-            terminateChild(agent.process);
+            terminateChild(proc);
           } else {
             agent.guardVerified = true;
             agent.startPrompt();
@@ -79,7 +82,10 @@ export function observeAgentEvent(agent: ManagedAgent, event: any): void {
           observePromptResponse(agent, event);
           if (agent.status === "idle") {
             release(agent.handle);
-            agent.idleTimer = setTimeout(() => terminateChild(agent.process), IDLE_REAP_MS);
+            clearTimeout(agent.idleTimer);
+            agent.idleTimer = setTimeout(() => {
+              if (agent.status === "idle") terminateChild(proc);
+            }, IDLE_REAP_MS);
             agent.idleTimer.unref();
           }
         }

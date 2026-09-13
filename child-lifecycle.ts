@@ -5,25 +5,15 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// Managed and batch paths share admission. Idle RPC processes do not hold permits.
-export const MAX_ACTIVE_CHILDREN = 4;
+import { release, setAdmissionBlock } from "./child-admission.ts";
+export { acquire, release, activeCount, setAdmissionBlock, MAX_ACTIVE_CHILDREN } from "./child-admission.ts";
+
 export const IDLE_REAP_MS = 60_000;
-const active = new Set<string>();
 const children = new Set<ChildProcess>();
 const terminating = new WeakSet<ChildProcess>();
-let blocked: string | undefined;
 let reportPause: (reason: string) => void = () => {};
-export function setAdmissionBlock(reason?: string): void { blocked = reason; }
 export function onChildPause(report: (reason: string) => void): void { reportPause = report; }
-export function childPaused(reason: string): void { blocked = reason; reportPause(reason); }
-export function acquire(key: string): void {
-  if (blocked) throw new Error(`Child admission paused: ${blocked}`);
-  if (active.has(key)) return;
-  if (active.size >= MAX_ACTIVE_CHILDREN) throw new Error(`Active child limit ${MAX_ACTIVE_CHILDREN} reached. Wait for a settled child.`);
-  active.add(key);
-}
-export function release(key: string): void { active.delete(key); }
-export function activeCount(): number { return active.size; }
+export function childPaused(reason: string): void { setAdmissionBlock(reason); reportPause(reason); }
 export function childSessionFile(cwd: string): string {
   const dir = join(homedir(), ".pi", "agent", "subagent-sessions");
   mkdirSync(dir, { recursive: true, mode: 0o700 });

@@ -32,6 +32,8 @@
     "managed-wait-tool.ts",
     "managed-workspace-tool.ts",
     "agent-manager.ts",
+    "managed-launch.ts",
+    "child-admission.ts",
     "agent-events.ts",
     "activity.ts",
     "child-policy.ts",

@@ -22,7 +22,8 @@ export function registerManagedSpawn(pi: ExtensionAPI, agentManager: AgentManage
 		label: "Spawn Agent",
 		description: [
 			"Spawn a child agent that runs in the background with bidirectional communication.",
-			"Returns a handle you can use with agent_steer, agent_interrupt, agent_wait, and agent_status.",
+			"Returns a handle immediately. Excess assignments queue and start automatically as capacity becomes available.",
+			"Use agent_steer, agent_interrupt, agent_wait, and agent_status with that handle.",
 			"Unlike 'subagent' (fire-and-forget), spawned agents can be steered, interrupted, and monitored in real-time.",
 			"Use workspace: true to create a shared workspace for cross-agent file communication.",
 		].join(" "),
@@ -132,7 +133,7 @@ export function registerManagedSpawn(pi: ExtensionAPI, agentManager: AgentManage
 			return {
 				content: [{
 					type: "text",
-					text: `Spawned agent **${handle}** (${modelInfo})\nSession: ${status.sessionFile}\nTask: ${params.task.slice(0, 200)}${params.task.length > 200 ? "..." : ""}${wsInfo}\n\nUse agent_steer to redirect, agent_interrupt to stop, agent_wait to collect results.`,
+					text: `Agent **${handle}** (${modelInfo})\nStatus: ${status.status}\nSession: ${status.sessionFile}\nTask: ${params.task.slice(0, 200)}${params.task.length > 200 ? "..." : ""}${wsInfo}\n\nUse agent_steer to redirect, agent_interrupt to stop, agent_wait to collect results.`,
 				}],
 				details: { handle, status, workspacePath: ws?.path, provider, costInfo },
 			};
