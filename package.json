@@ -1,6 +1,6 @@
 {
   "name": "pi-subagent-extension",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Subagent delegation for pi: single, parallel, and chained runs in isolated pi processes, with a user-defined agent roster, model resolution, and slash commands.",
   "keywords": [
     "pi-package",
@@ -33,6 +33,8 @@
     "managed-workspace-tool.ts",
     "agent-manager.ts",
     "agent-events.ts",
+    "activity.ts",
+    "child-policy.ts",
     "child-lifecycle.ts",
     "child-owner.ts",
     "owner-guard.ts",
@@ -46,6 +48,7 @@
     "settings-page.ts",
     "workspace.ts",
     "routing-policy.ts",
+    "tools",
     "skills",
     "agents",
     "prompts",

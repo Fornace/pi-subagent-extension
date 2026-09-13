@@ -66,9 +66,10 @@ export function observeAgentEvent(agent: ManagedAgent, event: any): void {
       case "response":
         if (event.id === "guard-preflight") {
           clearTimeout(agent.preflightTimer);
-          if (!event.success || !event.data?.commands?.some((c: { name: string }) => c.name === "mantice-guard")) {
+          const required = ["mantice-guard", "mantice-child-budget", "subagent-owner-ready"];
+          if (!event.success || !required.every(name => event.data?.commands?.some((c: { name: string }) => c.name === name))) {
             agent.status = "failed";
-            agent.error = "Child lacks repaired Mantice guard. Install it or set PI_SUBAGENT_GUARD_EXTENSION.";
+            agent.error = "Child lacks required guard, lifetime budget, or ownership capability. Inspect child extension errors and install coordinated repairs.";
             terminateChild(agent.process);
           } else {
             agent.guardVerified = true;

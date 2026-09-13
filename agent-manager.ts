@@ -1,6 +1,6 @@
 /** Persistent RPC child management; prompt completion is not process exit. */
 import { spawn } from "node:child_process";
-import { VERSION } from "@earendil-works/pi-coding-agent";
+import { VERSION, SessionManager } from "@earendil-works/pi-coding-agent";
 import { assertManagedRuntime } from "./agent-runtime.ts";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -15,7 +15,9 @@ export type { AgentSpawnConfig, AgentState, UsageStats, ManagedAgent, AgentEvent
 import { waitForPrompt } from "./agent-wait.ts";
 import { sendPrompt } from "./agent-rpc-prompts.ts";
 import { observeAgentEvent } from "./agent-events.ts";
-import { acquire, release, childArgs, childSessionFile, ownChild, terminateChild, activeCount } from "./child-lifecycle.ts";
+import { reportActivity } from "./activity.ts";
+import { admitChild, LIFETIME_POLICY } from "./child-policy.ts";
+import { acquire, release, childArgs, childSessionFile, ownChild, terminateChild, activeCount, childPaused } from "./child-lifecycle.ts";
 
 // ─── AgentManager ────────────────────────────────────────────────────────────
 
@@ -29,12 +31,17 @@ export class AgentManager {
     if (!config.model || !["mantice", "fornace"].includes(config.model.split("/")[0])) {
       throw new Error("Guarded child execution requires an explicit mantice/fornace model route.");
     }
+    const policy = admitChild();
     const handle = generateHandle(config.agentName);
     if (config.sessionFile) {
       const entries = fs.readFileSync(config.sessionFile, "utf8").trim().split("\n").map(line => JSON.parse(line));
       if (entries[0]?.type !== "session" || typeof entries[0]?.id !== "string") throw new Error("Invalid child session header");
     }
     const sessionFile = config.sessionFile ?? childSessionFile(config.cwd);
+    const session = SessionManager.open(sessionFile);
+    if (!session.getEntries().some(e => e.type === "custom" && e.customType === LIFETIME_POLICY)) {
+      session.appendCustomEntry(LIFETIME_POLICY, policy);
+    }
 
     // Build CLI args
     const invocation = getPiInvocation();
@@ -68,7 +75,9 @@ export class AgentManager {
     const proc = spawn(invocation.command, args, {
       cwd: config.cwd,
       detached: true,
-      env: { ...process.env, PI_SUBAGENT_OWNER_PID: String(process.pid) },
+      env: { ...process.env, PI_SUBAGENT_OWNER_PID: String(process.pid),
+        PI_SUBAGENT_DEPTH: String(policy.depth), PI_SUBAGENT_MAX_DEPTH: String(policy.maxDepth),
+        PI_SUBAGENT_LIFETIME_TOKENS: String(policy.tokenLimit) },
       stdio: ["pipe", "pipe", "pipe"],
     });
     ownChild(proc, handle);
@@ -108,6 +117,7 @@ export class AgentManager {
     };
 
     this.agents.set(handle, agent);
+    reportActivity(agent, { type: "spawn" });
 
     // Wire stdout → event parsing
     attachJsonlReader(
@@ -133,6 +143,7 @@ export class AgentManager {
         if (agent.status === "failed") agent.error = `Child exited before settlement (code ${code}). ${agent._stderrBuffer}`;
       }
       agent._resolveCompletion();
+      reportActivity(agent, { type: "process_close" });
 
       // Cleanup temp prompt file
       if (tmpPromptPath) {
@@ -145,6 +156,7 @@ export class AgentManager {
       agent.error = err.message;
       agent.endTime = Date.now();
       agent._resolveCompletion();
+      reportActivity(agent, { type: "process_error" });
     });
 
     // Abort signal
@@ -166,6 +178,7 @@ export class AgentManager {
     agent.preflightTimer = setTimeout(() => {
       agent.status = "failed";
       agent.error = "Child guard preflight did not complete";
+      reportActivity(agent, { type: "preflight_timeout" });
       terminateChild(proc);
     }, 30_000);
     agent.preflightTimer.unref();
@@ -232,6 +245,7 @@ export class AgentManager {
     agent.endTime = Date.now();
     agent.error = reason || "Interrupted by parent";
     agent.finalOutput = getFinalOutput(agent.messages);
+    reportActivity(agent, { type: "interrupt" });
 
     terminateChild(agent.process);
 
@@ -324,11 +338,17 @@ export class AgentManager {
     let event: any;
     try {
       event = JSON.parse(line);
-    } catch {
+      observeAgentEvent(agent, event);
+    } catch (error) {
+      agent.status = "failed";
+      agent.error = `Child RPC observation failed: ${error instanceof Error ? error.message : String(error)}`;
+      console.error(`[subagent] ${agent.handle}: ${agent.error}`);
+      childPaused(`${agent.handle}: ${agent.error}`);
+      terminateChild(agent.process);
+      reportActivity(agent, { type: "process_error" });
       return;
     }
-
-    observeAgentEvent(agent, event);
+    reportActivity(agent, event);
 
     // Forward event to callback
     onUpdate?.({ type: event.type, handle: agent.handle, data: event });

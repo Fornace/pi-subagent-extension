@@ -1,7 +1,9 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { registerDispatchPolicy } from "./child-policy.ts";
 import { onChildPause, setAdmissionBlock } from "./child-lifecycle.ts";
 const ENTRY = "subagent-admission-guard";
 export function registerOwnerGuard(pi: ExtensionAPI) {
+  registerDispatchPolicy(pi);
   let ctx: ExtensionContext | undefined;
   let childPause: string | undefined;
   let mechanical: { state: string; reason: string } | undefined;

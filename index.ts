@@ -14,12 +14,14 @@ import { Workspace } from "./workspace.ts";
 import { resolveAgentModel } from "./model-resolver.ts";
 import { loadAgentSettings, registerAgentsCommand } from "./settings-page.ts";
 import { registerOwnerGuard } from "./owner-guard.ts";
+import { registerActivity } from "./activity.ts";
 import { registerBatch } from "./subagent-tool.ts";
 import { registerManagedSpawn } from "./managed-spawn-tool.ts";
 import { registerManagedControl } from "./managed-control-tools.ts";
 import { registerManagedWait } from "./managed-wait-tool.ts";
 import { registerManagedWorkspace } from "./managed-workspace-tool.ts";
 export default function (pi: ExtensionAPI) {
+registerActivity(pi);
 registerOwnerGuard(pi);
 registerAgentsCommand(pi);
 const agentManager = new AgentManager();
