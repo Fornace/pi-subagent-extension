@@ -46,7 +46,8 @@ export class AgentManager {
     });
     const agent: ManagedAgent = {
       handle, agentName: config.agentName, model: config.model, thinkingLevel: config.thinkingLevel,
-      task: config.task, parentGoalId: activeGoalId(), queuedPrompt: config.task, status: "queued", messages: [], usage: emptyUsage(),
+      task: config.task, parentGoalId: activeGoalId(), wakeOnYield: config.wakeOnYield ?? true,
+      queuedPrompt: config.task, status: "queued", messages: [], usage: emptyUsage(),
       startTime: Date.now(), workspaceId: config.workspaceId, workspace: config.workspace,
       completionPromise, _resolveCompletion: resolveCompletion, _rejectCompletion: rejectCompletion,
       guardVerified: false, sessionFile, startPrompt: () => { throw new Error("Child launch pending"); },
@@ -122,7 +123,7 @@ export class AgentManager {
 
   interrupt(handle: string, reason?: string): boolean {
     const agent = this.agents.get(handle);
-    if (!agent || ["completed", "failed", "aborted"].includes(agent.status)) return false;
+    if (!agent || ["completed", "yielded", "failed", "aborted"].includes(agent.status)) return false;
     agent.cancelAdmission?.();
     agent.cancelAdmission = undefined;
     if (agent.stdin) {
@@ -156,7 +157,7 @@ export class AgentManager {
       responseModel: agent.responseModel, thinkingLevel: agent.thinkingLevel, status: agent.status,
       task: agent.task, elapsedMs: (agent.endTime || Date.now()) - agent.startTime,
       usage: { ...agent.usage }, workspaceId: agent.workspaceId,
-      finalOutput: agent.finalOutput, error: agent.error,
+      finalOutput: agent.finalOutput, yieldReason: agent.yieldReason, error: agent.error,
     };
   }
 
@@ -182,7 +183,7 @@ export class AgentManager {
   prune(): number {
     let pruned = 0;
     for (const [handle, agent] of this.agents) {
-      if (["completed", "failed", "aborted"].includes(agent.status) &&
+      if (["completed", "yielded", "failed", "aborted"].includes(agent.status) &&
           (!agent.process || agent.process.exitCode !== null || agent.process.signalCode !== null)) {
         this.agents.delete(handle);
         pruned++;

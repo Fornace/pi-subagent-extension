@@ -30,16 +30,17 @@ export function reportActivity(agent: ManagedAgent, event: any): void {
     if (text.trim()) observation.text = clean(text, 240);
   }
   if (agent.error) observation.reason = clean(agent.error, 240);
+  else if (agent.yieldReason) observation.reason = clean(agent.yieldReason, 240);
   if (!observation.text && prior?.event.text) observation.text = prior.event.text;
   if (!["agent_start", "spawn"].includes(type) && !observation.toolName && prior?.event.toolName) {
     observation.toolName = prior.event.toolName;
     observation.path = prior.event.path;
   }
   // Never expose shell commands, tool results, thinking text or system prompts.
-  if (type === "extension_ui_request" && agent.guardState !== "paused") return;
+  if (type === "extension_ui_request" && !["paused", "yielded"].includes(agent.guardState ?? "")) return;
   const record: Activity = {
     version: 1, sessionId, handle: agent.handle, agentName: agent.agentName,
-    state: agent.guardState === "paused" ? "paused" : agent.status,
+    state: ["paused", "yielded"].includes(agent.guardState ?? "") ? agent.guardState! : agent.status,
     at: Date.now(), task: clean(agent.task, 240), model: agent.responseModel ?? agent.model,
     sessionFile: agent.sessionFile, usage: { ...agent.usage }, event: observation,
   };

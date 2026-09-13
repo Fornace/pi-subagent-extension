@@ -119,6 +119,7 @@ export function registerManagedControl(pi: ExtensionAPI, agentManager: AgentMana
 			];
 			if (status.workspaceId) lines.push(`Workspace: ${status.workspaceId}`);
 			if (status.finalOutput) lines.push(`\nOutput:\n${status.finalOutput.slice(0, 500)}`);
+			if (status.yieldReason) lines.push(`\nYield: ${status.yieldReason}\nSaved session: ${status.sessionFile}`);
 			if (status.error) lines.push(`\nError: ${status.error}`);
 
 			return {
@@ -155,7 +156,7 @@ export function registerManagedControl(pi: ExtensionAPI, agentManager: AgentMana
 			}
 			const lines = agents.map((a) => {
 				const elapsed = (a.elapsedMs / 1000).toFixed(1);
-				const icon = a.status === "running" ? "●" : a.status === "completed" ? "✓" : a.status === "aborted" ? "⊘" : a.status === "failed" ? "✗" : "○";
+				const icon = a.status === "running" ? "●" : a.status === "completed" ? "✓" : a.status === "yielded" ? "↥" : a.status === "aborted" ? "⊘" : a.status === "failed" ? "✗" : "○";
 				return `${icon} ${a.handle} (${a.model || "default"}${a.responseModel ? ` -> ${a.responseModel}` : ""}) — ${a.status} ${elapsed}s ${formatManagedUsage(a.usage, true)}`;
 			});
 			return {
@@ -172,6 +173,7 @@ export function registerManagedControl(pi: ExtensionAPI, agentManager: AgentMana
 			for (const a of agents) {
 				const icon = a.status === "running" ? theme.fg("success", "●")
 					: a.status === "completed" ? theme.fg("success", "✓")
+					: a.status === "yielded" ? theme.fg("warning", "↥")
 					: a.status === "aborted" ? theme.fg("warning", "⊘")
 					: a.status === "failed" ? theme.fg("error", "✗")
 					: theme.fg("muted", "○");

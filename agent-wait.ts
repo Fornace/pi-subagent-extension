@@ -21,7 +21,7 @@ export function waitForPrompt(
     const check = () => {
       if (signal?.aborted) return abort();
       const current = status();
-      if (!current || ["idle", "completed", "failed", "aborted"].includes(current.status)) {
+      if (!current || ["idle", "completed", "yielded", "failed", "aborted"].includes(current.status)) {
         return finish(current);
       }
       if (deadline !== undefined && performance.now() >= deadline) {

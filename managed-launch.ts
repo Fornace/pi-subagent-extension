@@ -66,7 +66,7 @@ export function launchAgent(
       clearTimeout(agent.idleTimer);
       clearTimeout(agent.preflightTimer);
       const wasIdle = agent.status === "idle";
-      if (!["completed", "failed", "aborted"].includes(agent.status)) {
+      if (!["completed", "yielded", "failed", "aborted"].includes(agent.status)) {
         agent.status = wasIdle ? "completed" : "failed";
         agent.endTime = Date.now();
         agent.finalOutput = getFinalOutput(agent.messages);

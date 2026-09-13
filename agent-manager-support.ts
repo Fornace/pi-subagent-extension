@@ -28,9 +28,10 @@ export interface AgentSpawnConfig {
   tools?: string[];
   onUpdate?: (event: AgentEvent) => void;
   sessionFile?: string;
+  wakeOnYield?: boolean;
 }
 
-export type AgentState = "queued" | "spawning" | "running" | "idle" | "completed" | "failed" | "aborted";
+export type AgentState = "queued" | "spawning" | "running" | "idle" | "completed" | "yielded" | "failed" | "aborted";
 
 export interface UsageStats {
   input: number;
@@ -50,6 +51,7 @@ export interface ManagedAgent {
   thinkingLevel?: string;
   task: string;
   parentGoalId?: string;
+  wakeOnYield: boolean;
   status: AgentState;
   process?: ChildProcess;
   stdin?: NodeJS.WritableStream;
@@ -60,6 +62,7 @@ export interface ManagedAgent {
   startTime: number;
   endTime?: number;
   finalOutput?: string;
+  yieldReason?: string;
   error?: string;
   workspaceId?: string;
   workspace?: Workspace;
@@ -99,6 +102,7 @@ export interface AgentStatusInfo {
   usage: UsageStats;
   workspaceId?: string;
   finalOutput?: string;
+  yieldReason?: string;
   error?: string;
 }
 

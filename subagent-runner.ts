@@ -37,7 +37,7 @@ export async function runSingleAgent(
     const handle = manager.spawn({
       agentName, task, cwd: cwd ?? defaultCwd, model: config.model,
       thinkingLevel: thinkingLevel ?? config.thinkingLevel, systemPrompt: config.systemPrompt,
-      tools: config.tools, signal,
+      tools: config.tools, signal, wakeOnYield: false,
       onUpdate(event) {
         const status = manager.getStatus(event.handle);
         if (!status) return;
@@ -52,11 +52,15 @@ export async function runSingleAgent(
     result.usage = status.usage;
     result.responseModel = status.responseModel;
     result.exitCode = status.error || status.status === "failed" || status.status === "aborted" ? 1 : 0;
+    if (status.status === "yielded") {
+      result.stopReason = "yielded";
+      result.yieldReason = status.yieldReason;
+    }
     result.errorMessage = status.error;
     result.stderr = status.error ?? "";
     result.sessionFile = status.sessionFile;
     const last = result.messages.findLast(m => m.role === "assistant");
-    if (last?.role === "assistant") result.stopReason = last.stopReason;
+    if (last?.role === "assistant" && result.stopReason !== "yielded") result.stopReason = last.stopReason;
     return result;
   } finally {
     await manager.cleanup();

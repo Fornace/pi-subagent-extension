@@ -174,6 +174,7 @@ export interface SingleResult {
 	thinkingLevel?: string;
 	stopReason?: string;
 	errorMessage?: string;
+	yieldReason?: string;
 	step?: number;
 }
 
@@ -197,10 +198,14 @@ export function getFinalOutput(messages: Message[]): string {
 }
 
 export function isFailedResult(result: SingleResult): boolean {
-	return result.exitCode !== 0 || result.stopReason === "error" || result.stopReason === "aborted";
+	return result.exitCode !== 0 || result.stopReason === "error" || result.stopReason === "aborted" || result.stopReason === "yielded";
 }
 
 export function getResultOutput(result: SingleResult): string {
+	if (result.stopReason === "yielded") {
+		const output = getFinalOutput(result.messages);
+		return `${result.yieldReason ?? "Worker yielded its token tranche."}${result.sessionFile ? `\nSaved session: ${result.sessionFile}` : ""}${output ? `\n\n${output}` : ""}`;
+	}
 	if (isFailedResult(result)) {
 		return result.errorMessage || result.stderr || getFinalOutput(result.messages) || "(no output)";
 	}

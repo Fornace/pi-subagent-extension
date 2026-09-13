@@ -52,12 +52,12 @@ export function registerManagedWait(pi: ExtensionAPI, agentManager: AgentManager
 				const elapsed = (result.elapsedMs / 1000).toFixed(1);
 				const usageStr = formatManagedUsage(result.usage);
                 const success = !result.error && (result.status === "idle" || result.status === "completed");
-                const statusIcon = success ? "✓" : result.status === "aborted" ? "⊘" : "✗";
+                const statusIcon = success ? "✓" : result.status === "yielded" ? "↥" : result.status === "aborted" ? "⊘" : "✗";
 
 				return {
 					content: [{
 						type: "text",
-						text: `${statusIcon} Agent ${params.handle} ${result.status} (${elapsed}s, ${usageStr})\n\n${result.error ? `Error: ${result.error}\n` : ""}${output}`,
+						text: `${statusIcon} Agent ${params.handle} ${result.status} (${elapsed}s, ${usageStr})\n\n${result.yieldReason ? `Yield: ${result.yieldReason}\nSaved session: ${result.sessionFile}\n` : ""}${result.error ? `Error: ${result.error}\n` : ""}${output}`,
 					}],
 					details: { handle: params.handle, status: result },
 				};
@@ -91,6 +91,7 @@ export function registerManagedWait(pi: ExtensionAPI, agentManager: AgentManager
 			}
 
 			const icon = ["queued", "spawning", "running"].includes(status.status) ? theme.fg("muted", "○")
+				: status.status === "yielded" ? theme.fg("warning", "↥")
 				: !status.error && (status.status === "completed" || status.status === "idle") ? theme.fg("success", "✓")
 				: status.status === "aborted" ? theme.fg("warning", "⊘")
 				: theme.fg("error", "✗");
@@ -106,6 +107,9 @@ export function registerManagedWait(pi: ExtensionAPI, agentManager: AgentManager
 				if (status.finalOutput) {
 					container.addChild(new Spacer(1));
 					container.addChild(new Markdown(status.finalOutput.trim(), 0, 0, getMarkdownTheme()));
+				}
+				if (status.yieldReason) {
+					container.addChild(new Text(theme.fg("warning", `Yield: ${status.yieldReason}`), 0, 0));
 				}
 				if (status.error) {
 					container.addChild(new Text(theme.fg("error", `Error: ${status.error}`), 0, 0));

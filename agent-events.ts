@@ -1,6 +1,6 @@
 import { rpcSend, getFinalOutput, type ManagedAgent } from "./agent-manager-support.ts";
 import { observePromptResponse } from "./agent-rpc-prompts.ts";
-import { reportUsage } from "./usage-receipts.ts";
+import { reportUsage, reportYield } from "./usage-receipts.ts";
 import { acquire, release, terminateChild, IDLE_REAP_MS, childPaused } from "./child-lifecycle.ts";
 
 export function observeAgentEvent(agent: ManagedAgent, event: any): void {
@@ -58,12 +58,22 @@ export function observeAgentEvent(agent: ManagedAgent, event: any): void {
         break;
 
       case "subagent_guard":
-        agent.guardState = event.state;
-        if (event.state === "paused") {
-          agent.error = `Child guard paused: ${event.reason}`;
-          childPaused(`${agent.handle}: ${agent.error}`);
-          agent.status = "failed";
+        if (event.state === "paused" && event.outcome === "budget_yield") {
+          agent.guardState = "yielded";
+          agent.status = "yielded";
+          agent.yieldReason = event.reason;
+          agent.finalOutput = getFinalOutput(agent.messages);
+          agent.endTime = Date.now();
+          reportYield(agent, event);
           terminateChild(proc);
+        } else {
+          agent.guardState = event.state;
+          if (event.state === "paused") {
+            agent.error = `Child guard paused: ${event.reason}`;
+            childPaused(`${agent.handle}: ${agent.error}`);
+            agent.status = "failed";
+            terminateChild(proc);
+          }
         }
         break;
 

@@ -28,8 +28,9 @@ export default function childOwner(pi: ExtensionAPI) {
   let latest: unknown;
   const reportGuard = (data: unknown) => {
     latest = data;
-    const value = data as { version?: number; state?: string; reason?: string };
-    context?.ui.setStatus("subagent-guard", JSON.stringify({ version: value.version, state: value.state, reason: value.reason }));
+    const value = data as { version?: number; state?: string; reason?: string; outcome?: string; at?: number };
+    context?.ui.setStatus("subagent-guard", JSON.stringify({ version: value.version, state: value.state,
+      reason: value.reason, outcome: value.outcome, at: value.at }));
   };
   const stopGroup = () => {
     if (!groupVerified) {
