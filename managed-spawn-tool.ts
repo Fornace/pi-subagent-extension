@@ -36,6 +36,7 @@ export function registerManagedSpawn(pi: ExtensionAPI, agentManager: AgentManage
 			...FORNACE_ROUTING_GUIDELINES,
 		],
 		parameters: Type.Object({
+			sessionFile: Type.Optional(Type.String({ description: "Explicit durable child JSONL to resume. Inspect prior failure before resuming." })),
 			agent: Type.Optional(Type.String({ description: "Named agent from ~/.pi/agent/agents/. Omit if using model directly." })),
 			model: Type.Optional(Type.String({ description: "Explicit provider/model route. Unknown routes fail; they never inherit the parent." })),
 			thinkingLevel: Type.Optional(StringEnum(["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const, { description: "Thinking level override. Named agent default applies when omitted." })),
@@ -100,6 +101,7 @@ export function registerManagedSpawn(pi: ExtensionAPI, agentManager: AgentManage
 
 			// Spawn the agent
 			const handle = agentManager.spawn({
+				sessionFile: params.sessionFile,
 				agentName: resolvedName,
 				model: resolvedModel,
 				thinkingLevel: params.thinkingLevel ?? agentConfig?.thinkingLevel,
@@ -130,7 +132,7 @@ export function registerManagedSpawn(pi: ExtensionAPI, agentManager: AgentManage
 			return {
 				content: [{
 					type: "text",
-					text: `Spawned agent **${handle}** (${modelInfo})\nTask: ${params.task.slice(0, 200)}${params.task.length > 200 ? "..." : ""}${wsInfo}\n\nUse agent_steer to redirect, agent_interrupt to stop, agent_wait to collect results.`,
+					text: `Spawned agent **${handle}** (${modelInfo})\nSession: ${status.sessionFile}\nTask: ${params.task.slice(0, 200)}${params.task.length > 200 ? "..." : ""}${wsInfo}\n\nUse agent_steer to redirect, agent_interrupt to stop, agent_wait to collect results.`,
 				}],
 				details: { handle, status, workspacePath: ws?.path, provider, costInfo },
 			};

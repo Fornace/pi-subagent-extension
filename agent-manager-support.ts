@@ -27,6 +27,7 @@ export interface AgentSpawnConfig {
   signal?: AbortSignal;
   tools?: string[];
   onUpdate?: (event: AgentEvent) => void;
+  sessionFile?: string;
 }
 
 export type AgentState = "spawning" | "running" | "idle" | "completed" | "failed" | "aborted";
@@ -62,6 +63,12 @@ export interface ManagedAgent {
   completionPromise: Promise<void>;
   _resolveCompletion: () => void;
   _rejectCompletion: (err: Error) => void;
+  sessionFile: string;
+  idleTimer?: ReturnType<typeof setTimeout>;
+  preflightTimer?: ReturnType<typeof setTimeout>;
+  guardState?: string;
+  guardVerified: boolean;
+  startPrompt: () => void;
   _stdoutBuffer: string;
   _stderrBuffer: string;
 }
@@ -73,6 +80,9 @@ export interface AgentEvent {
 }
 
 export interface AgentStatusInfo {
+  sessionFile: string;
+  guardState?: string;
+  activeChildren: number;
   handle: string;
   agentName: string;
   model?: string;

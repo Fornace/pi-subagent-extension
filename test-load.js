@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events';
 import { resolveAgentModel } from './model-resolver.ts';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -63,6 +64,7 @@ const registeredCommands = new Map();
 const listeners = new Map();
 const extension = (await import('./index.ts')).default;
 extension({
+  events: new EventEmitter(),
   registerTool(tool) { registeredTools.set(tool.name, tool); },
   registerCommand(name, command) { registeredCommands.set(name, command); },
   on(name, handler) { listeners.set(name, handler); },

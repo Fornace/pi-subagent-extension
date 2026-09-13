@@ -161,6 +161,7 @@ export interface UsageStats {
 }
 
 export interface SingleResult {
+	sessionFile?: string;
 	agent: string;
 	agentSource: "user" | "project" | "unknown";
 	task: string;

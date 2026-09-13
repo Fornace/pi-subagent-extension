@@ -13,7 +13,9 @@ import { generateHandle, getPiInvocation, getFinalOutput, emptyUsage, rpcSend,
 export type { AgentSpawnConfig, AgentState, UsageStats, ManagedAgent, AgentEvent,
   AgentStatusInfo } from "./agent-manager-support.ts";
 import { waitForPrompt } from "./agent-wait.ts";
-import { sendPrompt, observePromptResponse } from "./agent-rpc-prompts.ts";
+import { sendPrompt } from "./agent-rpc-prompts.ts";
+import { observeAgentEvent } from "./agent-events.ts";
+import { acquire, release, childArgs, childSessionFile, ownChild, terminateChild, activeCount } from "./child-lifecycle.ts";
 
 // ─── AgentManager ────────────────────────────────────────────────────────────
 
@@ -23,11 +25,16 @@ export class AgentManager {
   /** Spawn a new child agent. Returns the handle immediately; the agent runs in background. */
   spawn(config: AgentSpawnConfig): string {
     assertManagedRuntime(VERSION);
+    if (config.signal?.aborted) throw new Error("Subagent spawn cancelled");
+    if (!config.model || !["mantice", "fornace"].includes(config.model.split("/")[0])) {
+      throw new Error("Guarded child execution requires an explicit mantice/fornace model route.");
+    }
     const handle = generateHandle(config.agentName);
+    const sessionFile = config.sessionFile ?? childSessionFile();
 
     // Build CLI args
     const invocation = getPiInvocation();
-    const args = [...invocation.args, "--mode", "rpc", "--no-session"];
+    const args = [...invocation.args, "--mode", "rpc", "--session", sessionFile, ...childArgs()];
     if (config.model) args.push("--model", config.model);
     if (config.thinkingLevel) args.push("--thinking", config.thinkingLevel);
     if (config.tools?.length) args.push("--tools", config.tools.join(","));
@@ -53,10 +60,14 @@ export class AgentManager {
     }
 
     // Spawn child process
+    acquire(handle);
     const proc = spawn(invocation.command, args, {
       cwd: config.cwd,
+      detached: true,
+      env: { ...process.env, PI_SUBAGENT_OWNER_PID: String(process.pid) },
       stdio: ["pipe", "pipe", "pipe"],
     });
+    ownChild(proc, handle);
 
     // Completion promise
     let resolveCompletion!: () => void;
@@ -83,6 +94,11 @@ export class AgentManager {
       completionPromise,
       _resolveCompletion: resolveCompletion,
       _rejectCompletion: rejectCompletion,
+      guardVerified: false,
+      sessionFile,
+      startPrompt: () => {
+        if (agent.status === "spawning") sendPrompt(agent, config.task);
+      },
       _stdoutBuffer: "",
       _stderrBuffer: "",
     };
@@ -103,10 +119,14 @@ export class AgentManager {
 
     // Process exit
     proc.on("close", (code) => {
+      clearTimeout(agent.idleTimer);
+      clearTimeout(agent.preflightTimer);
+      const wasIdle = agent.status === "idle";
       if (agent.status !== "completed" && agent.status !== "failed" && agent.status !== "aborted") {
-        agent.status = code === 0 ? "completed" : "failed";
+        agent.status = code === 0 || wasIdle ? "completed" : "failed";
         agent.endTime = Date.now();
         agent.finalOutput = getFinalOutput(agent.messages);
+        if (agent.status === "failed") agent.error = `Child exited before settlement (code ${code}). ${agent._stderrBuffer}`;
       }
       agent._resolveCompletion();
 
@@ -131,11 +151,20 @@ export class AgentManager {
         }
       };
       if (config.signal.aborted) onAbort();
-      else config.signal.addEventListener("abort", onAbort, { once: true });
+      else {
+        config.signal.addEventListener("abort", onAbort, { once: true });
+        proc.once("close", () => config.signal!.removeEventListener("abort", onAbort));
+      }
     }
 
-    // Send the task as the initial prompt
-    sendPrompt(agent, config.task);
+    // Admission preflight never submits paid work to an unguarded child.
+    rpcSend(agent.stdin, { id: "guard-preflight", type: "get_commands" });
+    agent.preflightTimer = setTimeout(() => {
+      agent.status = "failed";
+      agent.error = "Child guard preflight did not complete";
+      terminateChild(proc);
+    }, 30_000);
+    agent.preflightTimer.unref();
 
     return handle;
   }
@@ -144,6 +173,7 @@ export class AgentManager {
   steer(handle: string, message: string): boolean {
     const agent = this.agents.get(handle);
     if (!agent) return false;
+    if (!agent.guardVerified) throw new Error("Child guard preflight pending");
     if (agent.status === "idle") return this.followUp(handle, message);
     if (agent.status !== "running" && agent.status !== "spawning") return false;
 
@@ -155,10 +185,14 @@ export class AgentManager {
   followUp(handle: string, message: string): boolean {
     const agent = this.agents.get(handle);
     if (!agent) return false;
+    if (!agent.guardVerified) throw new Error("Child guard preflight pending");
     if (agent.status !== "running" && agent.status !== "idle" && agent.status !== "spawning") return false;
 
     // Fence an immediate wait before the asynchronous agent_start event arrives.
     const previousStatus = agent.status;
+    if (agent.guardState && agent.guardState !== "ready") throw new Error(`Child guard ${agent.guardState}`);
+    if (previousStatus === "idle") acquire(handle);
+    clearTimeout(agent.idleTimer);
     const previousOutput = agent.finalOutput;
     const previousError = agent.error;
     if (previousStatus === "idle") {
@@ -169,6 +203,7 @@ export class AgentManager {
     try {
       sendPrompt(agent, message, "followUp", previousStatus === "idle");
     } catch (error) {
+      if (previousStatus === "idle") release(handle);
       agent.status = previousStatus;
       agent.finalOutput = previousOutput;
       agent.error = previousError;
@@ -183,23 +218,18 @@ export class AgentManager {
     if (!agent) return false;
     if (agent.status === "completed" || agent.status === "failed" || agent.status === "aborted") return false;
 
-    // Send abort command via RPC
+    // Remove queued prompts before abort: Pi abort alone continues queued work.
     try {
+      rpcSend(agent.stdin, { type: "clear_queue" });
       rpcSend(agent.stdin, { type: "abort" });
-    } catch {}
+    } catch (error) { console.error("Subagent abort RPC failed", error); }
 
     agent.status = "aborted";
     agent.endTime = Date.now();
     agent.error = reason || "Interrupted by parent";
     agent.finalOutput = getFinalOutput(agent.messages);
 
-    // Force kill after 5s if still alive
-    const killTimeout = setTimeout(() => {
-      if (!agent.process.killed) {
-        agent.process.kill("SIGKILL");
-      }
-    }, 5000);
-    agent.process.once("close", () => clearTimeout(killTimeout));
+    terminateChild(agent.process);
 
     return true;
   }
@@ -215,6 +245,9 @@ export class AgentManager {
     if (!agent) return null;
 
     return {
+      sessionFile: agent.sessionFile,
+      guardState: agent.guardState,
+      activeChildren: activeCount(),
       handle: agent.handle,
       agentName: agent.agentName,
       model: agent.model,
@@ -254,8 +287,8 @@ export class AgentManager {
   /** Cleanup all running agents. */
   async cleanup(): Promise<void> {
     for (const [handle, agent] of this.agents) {
-      if (agent.status === "running" || agent.status === "spawning" || agent.status === "idle") {
-        this.interrupt(handle, "Session cleanup");
+      if (agent.process.exitCode === null && agent.process.signalCode === null) {
+        if (!this.interrupt(handle, "Session cleanup")) terminateChild(agent.process);
       }
     }
     // Wait for all to finish
@@ -268,7 +301,8 @@ export class AgentManager {
   prune(): number {
     let pruned = 0;
     for (const [handle, agent] of this.agents) {
-      if (agent.status === "completed" || agent.status === "failed" || agent.status === "aborted") {
+      if ((agent.status === "completed" || agent.status === "failed" || agent.status === "aborted") &&
+          (agent.process.exitCode !== null || agent.process.signalCode !== null)) {
         this.agents.delete(handle);
         pruned++;
       }
@@ -290,82 +324,7 @@ export class AgentManager {
       return;
     }
 
-    // Auto-respond to extension UI requests (cancel all dialogs)
-    if (event.type === "extension_ui_request") {
-      const response: Record<string, unknown> = {
-        type: "extension_ui_response",
-        id: event.id,
-        cancelled: true,
-      };
-      try { rpcSend(agent.stdin, response); } catch {}
-      return;
-    }
-
-    // Track agent lifecycle
-    switch (event.type) {
-      case "agent_start":
-        agent.status = "running";
-        break;
-
-      case "agent_end":
-        if (event.messages) {
-          for (const msg of event.messages) {
-            // Avoid duplicates
-            if (!agent.messages.some((m) => m === msg)) {
-              agent.messages.push(msg);
-            }
-          }
-        }
-        agent.finalOutput = getFinalOutput(agent.messages);
-        break;
-
-      case "agent_settled":
-        // agent_end can precede retry, compaction and queued continuations.
-        // Only the session-level settled event proves reusable prompt idleness.
-        if (agent.status === "running" || agent.status === "spawning") {
-          agent.status = "idle";
-        }
-        agent.finalOutput = getFinalOutput(agent.messages);
-        {
-          const last = agent.messages.findLast(message => message.role === "assistant");
-          if (last?.role === "assistant" && (last.stopReason === "error" || last.stopReason === "aborted")) {
-            agent.error = last.errorMessage || `Agent prompt ${last.stopReason}`;
-          }
-        }
-        break;
-
-      case "response":
-        observePromptResponse(agent, event);
-        break;
-
-      case "message_end":
-        if (event.message?.role === "assistant") {
-          agent.messages.push(event.message);
-          agent.usage.turns++;
-          const usage = event.message.usage;
-          if (usage) {
-            agent.usage.input += usage.input || 0;
-            agent.usage.output += usage.output || 0;
-            agent.usage.cacheRead += usage.cacheRead || 0;
-            agent.usage.cacheWrite += usage.cacheWrite || 0;
-            agent.usage.cost += usage.cost?.total || 0;
-            agent.usage.contextTokens = usage.totalTokens || 0;
-          }
-          if (event.message.model) agent.responseModel = event.message.model;
-          if (!agent.model && event.message.model) {
-            agent.model = event.message.model;
-          }
-        }
-        if (event.message?.role === "toolResult") {
-          agent.messages.push(event.message);
-        }
-        break;
-
-      case "tool_execution_start":
-      case "tool_execution_end":
-        // Track for progress reporting
-        break;
-    }
+    observeAgentEvent(agent, event);
 
     // Forward event to callback
     onUpdate?.({ type: event.type, handle: agent.handle, data: event });
