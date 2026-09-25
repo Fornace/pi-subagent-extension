@@ -53,7 +53,6 @@
     "workspace.ts",
     "routing-policy.ts",
     "tools",
-    "skills",
     "agents",
     "prompts",
     "README.md",
@@ -64,9 +63,6 @@
   "pi": {
     "extensions": [
       "./index.ts"
-    ],
-    "skills": [
-      "./skills"
     ]
   },
   "scripts": {

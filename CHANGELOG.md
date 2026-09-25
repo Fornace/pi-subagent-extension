@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.0 (2026-09-26)
 
 - Emit durable child usage receipts and charge their input plus output to the
   owner goal exactly once, including after restart reconciliation.
@@ -8,6 +8,10 @@
   Background workers wake the still-active parent once; blocking batch and chain
   tools return the handoff directly. Sibling admission remains open.
 - Keep guard-integrity and ownership failures as dispatch-blocking failures.
+- Drop the packaged `fornace-model-routing` skill. It is owned by the
+  user-level skills directory (`~/.pi/agent/skills/`, distributed by pi-setup)
+  and wins every name collision anyway; the packaged copy had already drifted
+  stale and triggered a `[Skill conflicts]` warning at every startup.
 
 ## 1.1.0
 

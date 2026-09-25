@@ -17,8 +17,11 @@ The packaged default roster uses Mantice routing aliases by task difficulty:
 | `operator` | Server, deployment and operational work | `mantice/fornace-max` | high |
 | `astra-debugger` | Explicitly requested Astra work | `mantice/fornace-astra` | max |
 
-Load the packaged `fornace-model-routing` skill before choosing a delegation
-route. The standard routes are Flash, Fast, Reasoning and Max. Astra requires an
+Load the `fornace-model-routing` skill before choosing a delegation route. It
+lives at the user level (`~/.pi/agent/skills/`, distributed by pi-setup) and is
+not packaged here: a packaged copy would collide with the user-level skill on
+every Fornace machine and drift stale. The standard routes are Flash, Fast,
+Reasoning and Max. Astra requires an
 explicit user request, including for hard debugging, mathematics and recovery.
 Vision, image and other media work uses its matching specialized route.
 
@@ -59,8 +62,6 @@ subagent/
 │   ├── operator.md      # Operations on fornace-max
 │   ├── researcher.md    # Research on fornace-reasoning
 │   └── astra-debugger.md # Explicitly requested Astra review
-├── skills/
-│   └── fornace-model-routing/SKILL.md # Routing and escalation contract
 └── prompts/             # Workflow presets (prompt templates)
     ├── implement.md     # scout -> planner -> builder
     ├── scout-and-plan.md    # scout -> planner (no implementation)
