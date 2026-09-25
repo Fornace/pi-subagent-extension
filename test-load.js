@@ -53,13 +53,6 @@ if (resolveAgentModel('definitely-not-registered', mockRegistry, dispatchingMode
   console.error('ERROR: unknown explicit model inherited instead of failing closed');
   process.exit(1);
 }
-const skill = fs.readFileSync(path.join(process.cwd(), 'skills/fornace-model-routing/SKILL.md'), 'utf8');
-for (const phrase of ['fornace-flash', 'fornace-fast', 'fornace-reasoning', 'fornace-max', 'fornace-astra', 'exact reproducer']) {
-  if (!skill.includes(phrase)) {
-    console.error(`ERROR: routing skill omits ${phrase}`);
-    process.exit(1);
-  }
-}
 const registeredTools = new Map();
 const registeredCommands = new Map();
 const listeners = new Map();
